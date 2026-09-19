@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fondo con degradado y manchas de color: es lo que hace que el efecto de
+   vidrio esmerilado se note. Sobre un fondo plano el glassmorphism no se ve.
+
+   RENDIMIENTO: el degradado NO va en el body con background-attachment:fixed.
+   Un fondo fijo obliga al navegador a repintar toda la pantalla en cada
+   scroll, y encima cada superficie de vidrio tiene que volver a difuminar esa
+   zona recien pintada. Se usa una capa fija aparte, que el compositor mantiene
+   quieta y no vuelve a pintar al desplazarse. */
+@layer base {
+  body {
+    @apply min-h-screen bg-[#0b1220] text-slate-100 antialiased;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(60rem 60rem at 10% -10%, rgba(251, 146, 60, 0.28), transparent 60%),
+      radial-gradient(50rem 50rem at 100% 0%, rgba(56, 189, 248, 0.22), transparent 55%),
+      radial-gradient(40rem 40rem at 50% 120%, rgba(168, 85, 247, 0.20), transparent 60%),
+      linear-gradient(160deg, #0b1220 0%, #131c31 50%, #0b1220 100%);
+  }
+}
+
+@layer components {
+  /* El desenfoque cuesta, y su costo crece con el radio: 12px se ve
+     practicamente igual que 24px y vale la mitad. */
+  .vidrio {
+    @apply rounded-2xl border border-white/15 bg-white/10 shadow-xl backdrop-blur-md;
+  }
+
+  /* Las superficies interiores NO llevan desenfoque: ya estan encima de una
+     tarjeta difuminada, de modo que el efecto no se nota y cada una anadia
+     una capa mas que recalcular. */
+  .vidrio-suave {
+    @apply rounded-xl border border-white/10 bg-white/[0.07];
+  }
+
+  .campo {
+    @apply w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-slate-100
+           placeholder-slate-400 outline-none
+           focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/30;
+  }
+  .boton {
+    @apply rounded-lg bg-amber-500/90 px-4 py-2 font-medium text-slate-900 shadow-lg
+           transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .boton-suave {
+    @apply rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-slate-100
+           transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .etiqueta {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}

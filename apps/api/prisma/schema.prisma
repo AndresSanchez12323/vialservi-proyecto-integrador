@@ -1,0 +1,210 @@
+// Esquema de datos de VialServi.
+// Sigue el orden logico del mapa de navegacion: el vehiculo es el punto de
+// partida, pertenece a un cliente, el cliente solicita un servicio y de ese
+// servicio nace el expediente, que enlaza (no duplica) a los demas modulos.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Seguridad y control de acceso ────────────────────────────────────────
+enum Rol {
+  ADMINISTRADOR
+  CENTRAL
+  TECNICO
+  CLIENTE
+}
+
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  documento    String   @unique
+  nombre       String
+  correo       String   @unique
+  clave        String // hash bcrypt, nunca la clave en claro
+  rol          Rol
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+
+  tecnico      Tecnico?
+  cliente      Cliente?
+  evidencias   Evidencia[]
+}
+
+// ── Modulo: gestionar vehiculo e inventario ──────────────────────────────
+model Vehiculo {
+  id         Int      @id @default(autoincrement())
+  placa      String   @unique
+  marca      String
+  modelo     String
+  color      String
+  creadoEn   DateTime @default(now())
+
+  clienteId  Int
+  cliente    Cliente  @relation(fields: [clienteId], references: [id])
+
+  servicios  Servicio[]
+  inventario ObjetoInventario[]
+}
+
+model ObjetoInventario {
+  id          Int      @id @default(autoincrement())
+  descripcion String
+  cantidad    Int      @default(1)
+  registradoEn DateTime @default(now())
+
+  vehiculoId  Int
+  vehiculo    Vehiculo @relation(fields: [vehiculoId], references: [id])
+}
+
+// ── Modulo: gestionar cliente ────────────────────────────────────────────
+model Cliente {
+  id        Int        @id @default(autoincrement())
+  documento String     @unique
+  nombre    String
+  telefono  String
+  correo    String?
+  creadoEn  DateTime   @default(now())
+
+  usuarioId Int?       @unique
+  usuario   Usuario?   @relation(fields: [usuarioId], references: [id])
+
+  vehiculos Vehiculo[]
+  servicios Servicio[]
+}
+
+// ── Modulo: gestionar tecnico ────────────────────────────────────────────
+// El tecnico es una entidad propia, no solo un rol: tiene hoja de vida con
+// especialidades y certificaciones que determinan que servicios puede atender.
+model Tecnico {
+  id             Int      @id @default(autoincrement())
+  documento      String   @unique
+  nombre         String
+  telefono       String
+  especialidades String // "MECANICA,CERRAJERIA,GRUA,CONDUCTOR"
+  licencia       String? // categoria de licencia de conduccion
+  disponible     Boolean  @default(true)
+
+  usuarioId      Int?     @unique
+  usuario        Usuario? @relation(fields: [usuarioId], references: [id])
+
+  servicios      Servicio[]
+}
+
+// ── Modulo: gestionar servicio ───────────────────────────────────────────
+enum TipoServicio {
+  GRUA // traslado de vehiculo y pasajeros
+  CARRO_TALLER // mecanica en sitio, cambio de llantas, cerrajeria
+  CONDUCTOR_ELEGIDO // disponible 24 horas
+}
+
+enum EstadoServicio {
+  SOLICITADO
+  ASIGNADO
+  EN_EJECUCION
+  TERMINADO
+  CERRADO
+  CANCELADO // el cliente desiste o el vehiculo ya no esta en el sitio
+}
+
+model Servicio {
+  id          Int            @id @default(autoincrement())
+  tipo        TipoServicio?  // lo define la central al clasificar
+  estado      EstadoServicio @default(SOLICITADO)
+  direccion   String
+  descripcion String
+  solicitadoEn DateTime      @default(now())
+
+  // Cancelacion: la registra la central. Un servicio cerrado no se puede
+  // cancelar, y la cancelacion exige motivo para que quede la trazabilidad.
+  canceladoEn       DateTime?
+  canceladoPor      Int?
+  motivoCancelacion String?
+
+  clienteId   Int
+  cliente     Cliente        @relation(fields: [clienteId], references: [id])
+  vehiculoId  Int
+  vehiculo    Vehiculo       @relation(fields: [vehiculoId], references: [id])
+  tecnicoId   Int?
+  tecnico     Tecnico?       @relation(fields: [tecnicoId], references: [id])
+
+  expediente  Expediente?
+}
+
+// ── Modulo: gestionar expediente ─────────────────────────────────────────
+// El expediente esta partido a proposito para que el trabajo sin senal no
+// genere conflictos:
+//   - Lo que el tecnico aporta en campo (evidencias y novedades) son filas
+//     propias, es decir, INSERT y nunca UPDATE: dos personas no pueden pisarse.
+//   - Los campos del expediente estan repartidos por rol. El tecnico escribe
+//     observaciones; la central escribe estado y cierre. Una actualizacion
+//     parcial del tecnico no puede sobrescribir lo de la central.
+model Expediente {
+  id          Int       @id @default(autoincrement())
+  idLocal     String?   @unique // id del dispositivo, si nacio sin senal
+  consecutivo String    @unique
+  abiertoEn   DateTime  @default(now())
+
+  // campos del tecnico
+  observaciones String?
+  // Contador que incrementa el dispositivo en cada edicion. El servidor
+  // descarta una actualizacion cuyo contador sea menor o igual al guardado,
+  // de modo que un reintento viejo que llega tarde no pisa el texto nuevo.
+  observacionesVersion Int @default(0)
+
+  // campos de la central: el tecnico no puede escribirlos
+  cerradoEn   DateTime?
+  cerradoPor  Int?
+
+  servicioId  Int       @unique
+  servicio    Servicio  @relation(fields: [servicioId], references: [id])
+
+  evidencias  Evidencia[]
+  novedades   Novedad[]
+}
+
+enum TipoEvidencia {
+  FOTO
+  VIDEO // clips de maximo 10 segundos
+}
+
+// idLocal lo genera el dispositivo antes de enviar: si la peticion se
+// reintenta, el servidor reconoce el registro y no lo duplica.
+model Evidencia {
+  id           Int           @id @default(autoincrement())
+  idLocal      String        @unique
+  tipo         TipoEvidencia
+  archivo      String // ruta en el almacenamiento de archivos
+  // tomadaEn es la hora del dispositivo: con ella se ordena la evidencia en
+  // pantalla, sin importar en que orden llegue al servidor.
+  tomadaEn     DateTime      @default(now())
+  registradaEn DateTime      @default(now())
+  // Si el expediente ya estaba cerrado cuando llego, no se rechaza: se
+  // guarda marcada, porque perder evidencia es peor que tener un registro
+  // tardio.
+  posteriorAlCierre Boolean  @default(false)
+
+  // Quien la aporto. Es lo que permite distinguir la version del tecnico de
+  // la del cliente cuando hay una reclamacion.
+  subidaPorId  Int
+  subidaPor    Usuario       @relation(fields: [subidaPorId], references: [id])
+
+  expedienteId Int
+  expediente   Expediente    @relation(fields: [expedienteId], references: [id])
+}
+
+model Novedad {
+  id           Int        @id @default(autoincrement())
+  idLocal      String     @unique
+  descripcion  String
+  ocurridaEn   DateTime   @default(now())
+  registradaEn DateTime   @default(now())
+  posteriorAlCierre Boolean @default(false)
+
+  expedienteId Int
+  expediente   Expediente @relation(fields: [expedienteId], references: [id])
+}

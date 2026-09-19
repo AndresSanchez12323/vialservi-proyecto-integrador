@@ -1,0 +1,33 @@
+{
+  "name": "vialservi-integrador",
+  "version": "0.2.0",
+  "private": true,
+  "description": "VialServi - aplicativo web para la gestion de expedientes de servicios mecanicos, de cerrajeria, de grua y de conductor elegido. Proyecto Integrador 2026-2.",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace apps/api",
+    "dev:web": "npm run dev --workspace apps/web",
+    "setup": "npm install && npm run db:push && npm run db:seed",
+    "db:push": "npm run db:push --workspace apps/api",
+    "db:seed": "npm run db:seed --workspace apps/api",
+    "test": "npm run test --workspace apps/api",
+    "build": "npm run build --workspace apps/web",
+    "preview": "npm run preview --workspace apps/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "allowScripts": {
+    "@prisma/client": true,
+    "prisma": true,
+    "@prisma/engines": true,
+    "esbuild": true
+  }
+}
