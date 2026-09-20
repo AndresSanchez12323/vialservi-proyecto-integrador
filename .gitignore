@@ -4,3 +4,10 @@ dist/
 *.db-journal
 .env
 *.tsbuildinfo
+
+# artefactos de LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz

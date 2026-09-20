@@ -1,0 +1,138 @@
+% ============================================================
+%  VialServi - Documento de sustentacion
+%  Proyecto Integrador 2026-2
+%  Compilar: pdflatex Sustentacion-VialServi.tex  (dos veces)
+% ============================================================
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-nodecimaldot]{babel}
+\usepackage{mathptmx}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{setspace}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage[hyphens]{url}
+\usepackage[hidelinks]{hyperref}
+\Urlmuskip=0mu plus 1mu
+
+\usepackage[top=3.5cm, bottom=2cm, left=3cm, right=1.9cm,
+            headheight=2.6cm, headsep=0.6cm, footskip=1cm]{geometry}
+
+\setlength{\parindent}{1.27cm}
+\setlength{\parskip}{0pt}
+\onehalfspacing
+
+\definecolor{ambar}{HTML}{B45309}
+\definecolor{grisclaro}{HTML}{F4F4F5}
+
+% ── Datos del formato ───────────────────────────────────────
+\newcommand{\formatoTitulo}{\shortstack{PROYECTO INTEGRADOR\\
+  VialServi · Documento de sustentación}}
+\newcommand{\formatoCodigo}{PI--2026--2}
+\newcommand{\formatoVersion}{01}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[C]{%
+  \setlength{\tabcolsep}{4pt}%
+  \renewcommand{\arraystretch}{1.2}%
+  \begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}m{3.9cm}
+                               |>{\centering\arraybackslash}X
+                               |>{\centering\arraybackslash}m{3.1cm}|}
+    \hline
+    \includegraphics[width=3.4cm]{logo-poli.jpeg} &
+    \small\textbf{\formatoTitulo} &
+    {\footnotesize\shortstack{Código: \formatoCodigo\\ Versión: \formatoVersion}} \\
+    \hline
+  \end{tabularx}}
+\fancyfoot[C]{\small\thepage}
+
+% ── Hoja horizontal para el mapa ────────────────────────────
+\newcommand{\paginaancha}{%
+  \clearpage
+  \pdfpagewidth=11in \pdfpageheight=8.5in
+  \newgeometry{top=3.5cm, bottom=2cm, left=2.5cm, right=2.5cm,
+               headheight=2.6cm, headsep=0.6cm, footskip=1cm}}
+\newcommand{\paginanormal}{%
+  \clearpage
+  \pdfpagewidth=8.5in \pdfpageheight=11in
+  \restoregeometry}
+
+% ── Estilos de titulo: cada seccion empieza en pagina nueva ─
+\makeatletter
+\renewcommand{\section}[1]{%
+  \clearpage
+  \refstepcounter{section}%
+  \vspace*{0.2\baselineskip}%
+  {\raggedright\Large\bfseries\thesection.\; #1\par}%
+  \addcontentsline{toc}{section}{\thesection.\; #1}%
+  \vspace{0.8\baselineskip}}
+\renewcommand{\subsection}[1]{%
+  \refstepcounter{subsection}%
+  \vspace{0.9\baselineskip}%
+  {\raggedright\large\bfseries\thesubsection\; #1\par}%
+  \addcontentsline{toc}{subsection}{\thesubsection\; #1}%
+  \vspace{0.3\baselineskip}}
+\makeatother
+
+\newtcolorbox{clave}[1][]{colback=grisclaro, colframe=ambar, boxrule=0.8pt,
+  arc=2pt, left=8pt, right=8pt, top=6pt, bottom=6pt, #1}
+
+\setlist[itemize]{leftmargin=1.1cm, itemsep=2pt, topsep=4pt, parsep=0pt}
+\setlist[enumerate]{leftmargin=1.1cm, itemsep=2pt, topsep=4pt, parsep=0pt}
+
+\newcommand{\tablita}[1]{\begin{center}\small\singlespacing #1\end{center}}
+
+\begin{document}
+
+% ── Portada ─────────────────────────────────────────────────
+\thispagestyle{fancy}
+\begin{center}
+  \vspace*{2.5cm}
+  {\LARGE\bfseries VialServi\par}
+  \vspace{0.5cm}
+  {\large\bfseries Aplicativo web para la gestión de expedientes de servicios\\
+  mecánicos, de cerrajería, de grúa y de conductor elegido\par}
+
+  \vspace{1cm}
+  {\large Documento de sustentación\par}
+
+  \vspace{2.5cm}
+  Edwin Andrés Sánchez Orozco\\
+  Brahian Estiven Rendón Murillo\\
+  Juan Pablo Vásquez Marín
+
+  \vspace{1cm}
+  Facultad de Ingenierías\\
+  Politécnico Colombiano Jaime Isaza Cadavid
+
+  \vspace{1cm}
+  Proyecto Integrador\\
+  Claudia Alejandra Rosero Noguera
+
+  \vspace{1cm}
+  \today
+\end{center}
+\clearpage
+
+% ── Indice ──────────────────────────────────────────────────
+\thispagestyle{fancy}
+{\Large\bfseries Contenido\par}
+\vspace{0.6cm}
+{\singlespacing
+\makeatletter
+\@starttoc{toc}
+\makeatother
+}
+
+\input{contenido}
+
+\end{document}
