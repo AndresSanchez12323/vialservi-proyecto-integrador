@@ -18,9 +18,31 @@ rutasClientes.use(autenticar);
 rutasClientes.get('/', exigirRol('ADMINISTRADOR', 'CENTRAL'), async (_req, res) => {
   const lista = await prisma.cliente.findMany({
     orderBy: { nombre: 'asc' },
-    include: { _count: { select: { vehiculos: true, servicios: true } } },
+    include: {
+      _count: { select: { vehiculos: true, servicios: true } },
+      // Situación en tiempo real de cada servicio del cliente: con esto la
+      // central controla pendientes, abiertos y cerrados sin otra consulta.
+      servicios: {
+        orderBy: { solicitadoEn: 'desc' },
+        select: {
+          id: true, estado: true, tipo: true, tipoSolicitado: true,
+          direccion: true, solicitadoEn: true,
+          vehiculo: { select: { placa: true } },
+          expediente: { select: { id: true, consecutivo: true, cerradoEn: true } },
+        },
+      },
+    },
   });
   res.json(lista);
+});
+
+rutasClientes.get('/yo', async (req, res) => {
+  const propio = await prisma.cliente.findUnique({
+    where: { usuarioId: req.sesion!.id },
+    include: { vehiculos: true },
+  });
+  if (!propio) return res.status(404).json({ error: 'Su usuario no tiene ficha de cliente' });
+  res.json(propio);
 });
 
 rutasClientes.get('/:id', async (req, res) => {

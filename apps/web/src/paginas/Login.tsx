@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { pedir, sesion, type Sesion } from '../comun/api';
+import { inicioPorRol } from '../comun/Atras';
 
 const DEMO = [
   { doc: '2001', quien: 'Central de Operaciones' },
@@ -15,6 +16,10 @@ export function Login() {
   const [clave, setClave] = useState('VialServi2026');
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+
+  // Con sesión válida no hay login que mostrar: de vuelta a la app.
+  // Así Atrás nunca deja al usuario ante un inicio de sesión ajeno.
+  if (sesion.actual()) return <Navigate to={inicioPorRol()} replace />;
 
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault();

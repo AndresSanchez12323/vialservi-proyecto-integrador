@@ -2,9 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { pedir, type Tecnico } from '../comun/api';
 
 export function Tecnicos() {
+  // Se refresca sola: si un técnico cambia su disponibilidad, la central
+  // lo ve en segundos sin recargar.
   const { data, isLoading, error } = useQuery({
     queryKey: ['tecnicos'],
     queryFn: () => pedir<Tecnico[]>('/tecnicos'),
+    refetchInterval: 15000,
   });
 
   return (
@@ -13,7 +16,7 @@ export function Tecnicos() {
         <h2 className="text-xl font-semibold">Gestionar técnico</h2>
         <p className="text-sm text-slate-400">
           El técnico es una entidad propia, no solo un rol: su hoja de vida determina qué
-          servicios puede atender.
+          servicios puede atender. La disponibilidad se actualiza sola cada 15 segundos.
         </p>
       </div>
 
@@ -50,6 +53,7 @@ export function Tecnicos() {
             <dl className="mt-4 space-y-1 text-sm text-slate-300">
               <div className="flex justify-between"><dt className="text-slate-400">Teléfono</dt><dd>{t.telefono}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-400">Licencia</dt><dd>{t.licencia ?? '—'}</dd></div>
+              <div className="flex justify-between"><dt className="text-slate-400">En curso ahora</dt><dd className="font-mono text-sky-300">{t.activos ?? 0}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-400">Servicios atendidos</dt><dd>{t._count?.servicios ?? 0}</dd></div>
             </dl>
           </article>

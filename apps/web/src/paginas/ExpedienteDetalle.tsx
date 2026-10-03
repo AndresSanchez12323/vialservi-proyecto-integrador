@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { enviar, pedir, sesion, type Expediente } from '../comun/api';
+import { Atras } from '../comun/Atras';
 import { ESTADOS, ROLES, TIPOS, fecha } from '../comun/formato';
 
 const idLocal = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -70,6 +71,9 @@ export function ExpedienteDetalle() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <Atras destino="/servicios" />
+      </div>
       <header className="vidrio p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

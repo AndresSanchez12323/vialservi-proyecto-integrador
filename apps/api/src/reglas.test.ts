@@ -11,6 +11,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { crearApp } from './app.js';
 import { prisma } from './prisma.js';
+import { MAX_VEHICULOS_CLIENTE } from './modulos/vehiculos.js';
 
 const app = crearApp();
 
@@ -256,29 +257,44 @@ describe('B. La solicitud del servicio', () => {
     expect(r.body.every((v: { cliente: { id: number } }) => v.cliente.id === yo.id)).toBe(true);
   });
 
-  it('B6 · el cliente registra su vehiculo y queda a su nombre', async () => {
+  it('B6 · el cliente registra sus vehiculos hasta el tope, y el siguiente se rechaza', async () => {
     const yo = await prisma.cliente.findUniqueOrThrow({ where: { documento: '71234567' } });
     const otro = await prisma.cliente.findFirstOrThrow({ where: { documento: { not: '71234567' } } });
-    const placa = `TST${String(Date.now()).slice(-5)}`; // unica entre corridas
+    const placaNueva = () => `TS${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const cuantos = () => prisma.vehiculo.count({ where: { clienteId: yo.id } });
 
-    // otra vez se manda el id de OTRO dueño: el servidor debe ignorarlo
-    const r = await como(cliente)(
+    // la corrida anterior pudo dejar vehiculos: se registra solo lo que falte
+    let registrado = await prisma.vehiculo.findFirstOrThrow({ where: { clienteId: yo.id } });
+    while ((await cuantos()) < MAX_VEHICULOS_CLIENTE) {
+      // otra vez se manda el id de OTRO dueño: el servidor debe ignorarlo
+      const r = await como(cliente)(
+        request(app).post('/api/vehiculos').send({
+          placa: placaNueva(), marca: 'Renault', modelo: 'Sandero', color: 'Blanco', clienteId: otro.id,
+        }),
+      );
+      expect(r.status).toBe(201);
+      expect(r.body.clienteId).toBe(yo.id);
+      registrado = r.body;
+    }
+
+    // con el tope alcanzado, el siguiente no entra
+    const extra = await como(cliente)(
       request(app).post('/api/vehiculos').send({
-        placa, marca: 'Renault', modelo: 'Sandero', color: 'Blanco', clienteId: otro.id,
+        placa: placaNueva(), marca: 'Renault', modelo: 'Logan', color: 'Gris',
       }),
     );
-    expect(r.status).toBe(201);
-    expect(r.body.clienteId).toBe(yo.id);
+    expect(extra.status).toBe(403);
+    expect(await cuantos()).toBe(MAX_VEHICULOS_CLIENTE);
 
-    // y ya sirve para pedir un servicio con el
+    // y los que ya tiene sirven para pedir un servicio
     const s = await como(cliente)(
       request(app).post('/api/servicios').send({
-        vehiculoId: r.body.id, direccion: 'Avenida 33 con la 65',
+        vehiculoId: registrado.id, direccion: 'Avenida 33 con la 65',
         descripcion: 'Se varo el carro recien registrado',
       }),
     );
     expect(s.status).toBe(201);
-    expect(s.body.vehiculo.placa).toBe(placa);
+    expect(s.body.vehiculo.id).toBe(registrado.id);
   });
 
   it('B7 · no se registran dos vehiculos con la misma placa', async () => {
