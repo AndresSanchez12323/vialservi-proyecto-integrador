@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { enviar, pedir, sesion, type Servicio, type Tecnico } from '../comun/api';
+import { enviar, pedir, sesion, type Cliente, type Servicio, type Tecnico, type Vehiculo } from '../comun/api';
 import { ESTADOS, TIPOS, fecha } from '../comun/formato';
 
 /** Panel de clasificacion: es el paso donde la central decide el tipo de
  *  servicio y a quien se lo asigna. De ahi nace el expediente. */
 function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: () => void }) {
-  const [tipo, setTipo] = useState('CARRO_TALLER');
+  // Preselecciona lo que el cliente pidió: la central confirma o corrige.
+  const [tipo, setTipo] = useState(servicio.tipoSolicitado ?? 'CARRO_TALLER');
   const [tecnicoId, setTecnicoId] = useState('');
   const { data: tecnicos } = useQuery({ queryKey: ['tecnicos'], queryFn: () => pedir<Tecnico[]>('/tecnicos') });
 
@@ -70,20 +71,49 @@ function Cancelar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: ()
 export function Servicios() {
   const cliente = useQueryClient();
   const rol = sesion.rol();
+  const esCliente = rol === 'CLIENTE';
   const [abierto, setAbierto] = useState<number | null>(null);
   const [cancelando, setCancelando] = useState<number | null>(null);
+  const [pidiendo, setPidiendo] = useState(false);
+  const [form, setForm] = useState({ vehiculoId: '', tipoSolicitado: 'CARRO_TALLER', direccion: '', descripcion: '' });
+  const [ok, setOk] = useState('');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['servicios'],
     queryFn: () => pedir<Servicio[]>('/servicios'),
   });
 
+  // Vehículos propios para el formulario de solicitud del cliente.
+  const { data: yo } = useQuery({
+    queryKey: ['clienteYo'],
+    queryFn: () => pedir<Cliente & { vehiculos: Vehiculo[] }>('/clientes/yo'),
+    enabled: esCliente,
+  });
+
   const refrescar = () => {
     cliente.invalidateQueries({ queryKey: ['servicios'] });
     cliente.invalidateQueries({ queryKey: ['indicadores'] });
+    cliente.invalidateQueries({ queryKey: ['clienteYo'] });
     setAbierto(null);
     setCancelando(null);
   };
+
+  const solicitar = useMutation({
+    mutationFn: () =>
+      enviar('/servicios', 'POST', {
+        clienteId: yo?.id,
+        vehiculoId: Number(form.vehiculoId),
+        tipoSolicitado: form.tipoSolicitado,
+        direccion: form.direccion,
+        descripcion: form.descripcion,
+      }),
+    onSuccess: () => {
+      setForm({ vehiculoId: '', tipoSolicitado: 'CARRO_TALLER', direccion: '', descripcion: '' });
+      setPidiendo(false);
+      setOk('Servicio solicitado. La central lo clasificará y asignará.');
+      refrescar();
+    },
+  });
 
   const avanzar = useMutation({
     mutationFn: ({ id, estado }: { id: number; estado: string }) =>
@@ -107,6 +137,44 @@ export function Servicios() {
         </p>
       </div>
 
+      {esCliente && (
+        <div className="vidrio space-y-3 p-5">
+          <button className="boton w-full sm:w-auto" onClick={() => { setPidiendo(!pidiendo); setOk(''); }}>
+            {pidiendo ? 'Cerrar formulario' : '+ Solicitar nuevo servicio'}
+          </button>
+
+          {pidiendo && (
+            <div className="grid gap-3 pt-1 sm:grid-cols-2">
+              <select value={form.vehiculoId} onChange={(e) => setForm({ ...form, vehiculoId: e.target.value })} className="campo" title="Vehículo para el servicio">
+                <option value="" className="bg-slate-800">Vehículo…</option>
+                {(yo?.vehiculos ?? []).map((v) => (
+                  <option key={v.id} value={v.id} className="bg-slate-800">{v.placa} · {v.marca} {v.modelo}</option>
+                ))}
+              </select>
+              <select value={form.tipoSolicitado} onChange={(e) => setForm({ ...form, tipoSolicitado: e.target.value })} className="campo" title="Tipo de servicio que necesita">
+                {Object.entries(TIPOS).map(([k, v]) => (
+                  <option key={k} value={k} className="bg-slate-800">{v}</option>
+                ))}
+              </select>
+              <input value={form.direccion} onChange={(e) => setForm({ ...form, direccion: e.target.value })} placeholder="Dirección donde está el vehículo" className="campo sm:col-span-2" />
+              <textarea value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Qué necesita (ej: no enciende, llanta averiada…)" rows={3} className="campo resize-none sm:col-span-2" />
+              {solicitar.error && <p className="text-sm text-rose-300 sm:col-span-2">{(solicitar.error as Error).message}</p>}
+              <div className="sm:col-span-2">
+                <button
+                  className="boton"
+                  disabled={solicitar.isPending || !form.vehiculoId || form.direccion.length < 5 || form.descripcion.length < 5}
+                  onClick={() => solicitar.mutate()}
+                >
+                  {solicitar.isPending ? 'Solicitando…' : 'Enviar solicitud a la central'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {ok && <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{ok}</p>}
+
       {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
       {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
 
@@ -122,6 +190,11 @@ export function Servicios() {
                   {s.tipo && (
                     <span className="etiqueta border border-white/20 bg-white/10 text-slate-200">
                       {TIPOS[s.tipo]}
+                    </span>
+                  )}
+                  {!s.tipo && s.tipoSolicitado && (
+                    <span className="etiqueta border border-dashed border-sky-300/40 bg-sky-400/10 text-sky-200" title="Lo que el cliente cree necesitar; la central confirma al clasificar">
+                      Solicitado: {TIPOS[s.tipoSolicitado] ?? s.tipoSolicitado}
                     </span>
                   )}
                   {s.expediente && (

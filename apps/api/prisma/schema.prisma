@@ -114,6 +114,9 @@ enum EstadoServicio {
 model Servicio {
   id          Int            @id @default(autoincrement())
   tipo        TipoServicio?  // lo define la central al clasificar
+  // Lo que el cliente cree necesitar al solicitar. La central lo ve al
+  // clasificar como sugerencia, pero decide el tipo definitivo.
+  tipoSolicitado TipoServicio?
   estado      EstadoServicio @default(SOLICITADO)
   direccion   String
   descripcion String

@@ -26,18 +26,23 @@ rutasReportes.get('/indicadores', async (_req, res) => {
   });
 });
 
-// Historial por placa: es la consulta que resuelve una reclamacion meses despues.
+// Historial por placa y/o categoría: es la consulta que resuelve una
+// reclamación meses después, y la que alimenta el gráfico de la central.
 rutasReportes.get('/historial', async (req, res) => {
   const placa = String(req.query.placa ?? '').toUpperCase();
-  if (!placa) return res.json([]);
+  const tipo = String(req.query.tipo ?? '');
+  const porTipo = ['GRUA', 'CARRO_TALLER', 'CONDUCTOR_ELEGIDO'] as const;
 
   const servicios = await prisma.servicio.findMany({
-    where: { vehiculo: { placa: { contains: placa } } },
+    where: {
+      ...(placa ? { vehiculo: { placa: { contains: placa } } } : {}),
+      ...(porTipo.includes(tipo as (typeof porTipo)[number]) ? { tipo: tipo as (typeof porTipo)[number] } : {}),
+    },
     orderBy: { solicitadoEn: 'desc' },
     include: {
       vehiculo: true,
-      cliente: { select: { nombre: true } },
-      tecnico: { select: { nombre: true } },
+      cliente: { select: { nombre: true, documento: true, telefono: true } },
+      tecnico: { select: { nombre: true, especialidades: true } },
       expediente: { include: { _count: { select: { evidencias: true, novedades: true } } } },
     },
   });

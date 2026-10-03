@@ -9,6 +9,8 @@ rutasServicios.use(autenticar);
 const solicitud = z.object({
   clienteId: z.coerce.number().int().positive(),
   vehiculoId: z.coerce.number().int().positive(),
+  // El cliente indica qué cree necesitar; la central confirma al clasificar.
+  tipoSolicitado: z.enum(['GRUA', 'CARRO_TALLER', 'CONDUCTOR_ELEGIDO']).optional(),
   direccion: z.string().min(5),
   descripcion: z.string().min(5),
 });
@@ -56,6 +58,19 @@ rutasServicios.get('/:id', async (req, res) => {
 rutasServicios.post('/', exigirRol('CENTRAL', 'ADMINISTRADOR', 'CLIENTE'), async (req, res) => {
   const datos = solicitud.safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
+
+  // El cliente solo solicita para sí y con un vehículo propio.
+  if (req.sesion!.rol === 'CLIENTE') {
+    const propio = await prisma.cliente.findUnique({ where: { usuarioId: req.sesion!.id } });
+    if (!propio || propio.id !== datos.data.clienteId) {
+      return res.status(403).json({ error: 'Solo puede solicitar servicios a su nombre' });
+    }
+    const vehiculo = await prisma.vehiculo.findUnique({ where: { id: datos.data.vehiculoId } });
+    if (!vehiculo || vehiculo.clienteId !== propio.id) {
+      return res.status(403).json({ error: 'El vehiculo no pertenece a su cuenta' });
+    }
+  }
+
   const creado = await prisma.servicio.create({ data: datos.data, include: incluir });
   res.status(201).json(creado);
 });

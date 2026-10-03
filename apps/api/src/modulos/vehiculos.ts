@@ -23,8 +23,20 @@ rutasVehiculos.use(autenticar);
 
 rutasVehiculos.get('/', async (req, res) => {
   const placa = String(req.query.placa ?? '').toUpperCase();
+  const sesion = req.sesion!;
+  let clienteId: number | undefined;
+
+  // Cada cliente ve solo sus vehículos: el filtro vive en el servidor.
+  if (sesion.rol === 'CLIENTE') {
+    const propio = await prisma.cliente.findUnique({ where: { usuarioId: sesion.id } });
+    clienteId = propio?.id ?? -1;
+  }
+
   const lista = await prisma.vehiculo.findMany({
-    where: placa ? { placa: { contains: placa } } : undefined,
+    where: {
+      ...(placa ? { placa: { contains: placa } } : {}),
+      ...(clienteId !== undefined ? { clienteId } : {}),
+    },
     orderBy: { placa: 'asc' },
     include: { cliente: { select: { id: true, nombre: true, documento: true } } },
   });
@@ -40,15 +52,28 @@ rutasVehiculos.get('/:id', async (req, res) => {
   res.json(encontrado);
 });
 
-rutasVehiculos.post('/', exigirRol('ADMINISTRADOR', 'CENTRAL'), async (req, res) => {
+rutasVehiculos.post('/', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (req, res) => {
   const datos = vehiculo.safeParse(req.body);
   if (!datos.success) {
     return res.status(400).json({ error: 'Datos invalidos', detalle: datos.error.issues });
   }
+
+  // El cliente solo registra vehículos a su nombre: se ignora lo que mande
+  // en clienteId y se usa su propio registro.
+  let clienteId = datos.data.clienteId;
+  if (req.sesion!.rol === 'CLIENTE') {
+    const propio = await prisma.cliente.findUnique({ where: { usuarioId: req.sesion!.id } });
+    if (!propio) return res.status(403).json({ error: 'Su usuario no tiene ficha de cliente' });
+    clienteId = propio.id;
+  } else {
+    const existe = await prisma.cliente.findUnique({ where: { id: clienteId } });
+    if (!existe) return res.status(404).json({ error: 'Cliente no encontrado' });
+  }
+
   const repetido = await prisma.vehiculo.findUnique({ where: { placa: datos.data.placa } });
   if (repetido) return res.status(409).json({ error: 'Ya existe un vehiculo con esa placa' });
 
-  const creado = await prisma.vehiculo.create({ data: datos.data });
+  const creado = await prisma.vehiculo.create({ data: { ...datos.data, clienteId } });
   res.status(201).json(creado);
 });
 
