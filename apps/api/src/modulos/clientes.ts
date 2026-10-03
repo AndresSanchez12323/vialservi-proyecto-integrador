@@ -13,7 +13,9 @@ const cliente = z.object({
 export const rutasClientes = Router();
 rutasClientes.use(autenticar);
 
-rutasClientes.get('/', async (_req, res) => {
+// El directorio completo lleva el documento y el telefono de terceros: no lo
+// ve el tecnico ni el cliente, solo quien administra la operacion.
+rutasClientes.get('/', exigirRol('ADMINISTRADOR', 'CENTRAL'), async (_req, res) => {
   const lista = await prisma.cliente.findMany({
     orderBy: { nombre: 'asc' },
     include: { _count: { select: { vehiculos: true, servicios: true } } },

@@ -7,7 +7,9 @@ import { ROLES } from './formato';
 const MODULOS = [
   { ruta: '/panel', nombre: 'Panel', roles: ['ADMINISTRADOR', 'CENTRAL'], listo: true },
   { ruta: '/servicios', nombre: 'Gestionar servicio', roles: ['ADMINISTRADOR', 'CENTRAL', 'TECNICO', 'CLIENTE'], listo: true },
-  { ruta: '/vehiculos', nombre: 'Gestionar vehículo e inventario', roles: ['ADMINISTRADOR', 'CENTRAL'], listo: true },
+  // El cliente tambien entra aqui: registrar su vehiculo es el paso previo a
+  // poder pedir un servicio. Solo ve los suyos, y ese filtro es del servidor.
+  { ruta: '/vehiculos', nombre: 'Gestionar vehículo e inventario', roles: ['ADMINISTRADOR', 'CENTRAL', 'CLIENTE'], listo: true },
   { ruta: '/clientes', nombre: 'Gestionar cliente', roles: ['ADMINISTRADOR', 'CENTRAL'], listo: true },
   { ruta: '/tecnicos', nombre: 'Gestionar técnico', roles: ['ADMINISTRADOR', 'CENTRAL'], listo: true },
   { ruta: '/historicos', nombre: 'Gestionar históricos', roles: ['ADMINISTRADOR', 'CENTRAL'], listo: true },

@@ -1,8 +1,121 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { enviar, pedir, sesion, type Servicio, type Tecnico } from '../comun/api';
+import {
+  enviar, pedir, sesion,
+  type Cliente, type Servicio, type Tecnico, type Vehiculo,
+} from '../comun/api';
 import { ESTADOS, TIPOS, fecha } from '../comun/formato';
+
+/** Solicitud del servicio: la hace el cliente desde su sesion, o la central
+ *  cuando el cliente llama por telefono. Aqui no se elige ni el tipo ni el
+ *  tecnico: quien pide describe lo que le pasa, y clasificar es otro paso. */
+function Solicitar({ alTerminar }: { alTerminar: () => void }) {
+  const rol = sesion.rol();
+  const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
+
+  const [clienteId, setClienteId] = useState('');
+  const [vehiculoId, setVehiculoId] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+
+  const { data: clientes } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: () => pedir<Cliente[]>('/clientes'),
+    enabled: esCentral,
+  });
+  // Para el cliente el servidor ya devuelve solo sus vehiculos; la central
+  // recibe todos y aqui se acotan al cliente que eligio.
+  const { data: vehiculos } = useQuery({
+    queryKey: ['vehiculos'],
+    queryFn: () => pedir<Vehiculo[]>('/vehiculos'),
+  });
+  const suyos = esCentral
+    ? (vehiculos ?? []).filter((v) => String(v.cliente?.id) === clienteId)
+    : (vehiculos ?? []);
+
+  const mutar = useMutation({
+    mutationFn: () =>
+      enviar('/servicios', 'POST', {
+        ...(esCentral ? { clienteId } : {}),
+        vehiculoId,
+        direccion,
+        descripcion,
+      }),
+    onSuccess: alTerminar,
+  });
+
+  const completo = vehiculoId && direccion.length >= 5 && descripcion.length >= 5;
+
+  return (
+    <div className="vidrio space-y-3 p-5">
+      <div>
+        <p className="font-medium">Solicitar un servicio</p>
+        <p className="text-xs text-slate-400">
+          La central lo clasifica después y le asigna el técnico que corresponda.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {esCentral && (
+          <select
+            value={clienteId}
+            onChange={(e) => { setClienteId(e.target.value); setVehiculoId(''); }}
+            className="campo"
+          >
+            <option value="" className="bg-slate-800">Cliente…</option>
+            {(clientes ?? []).map((c) => (
+              <option key={c.id} value={c.id} className="bg-slate-800">
+                {c.nombre} · {c.documento}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <select value={vehiculoId} onChange={(e) => setVehiculoId(e.target.value)} className="campo">
+          <option value="" className="bg-slate-800">Vehículo…</option>
+          {suyos.map((v) => (
+            <option key={v.id} value={v.id} className="bg-slate-800">
+              {v.placa} · {v.marca} {v.modelo}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {esCentral && !clienteId && (
+        <p className="text-xs text-slate-400">Elija primero el cliente para ver sus vehículos.</p>
+      )}
+      {!esCentral && vehiculos?.length === 0 && (
+        <p className="text-xs text-amber-200">
+          Todavía no tiene vehículos registrados.{' '}
+          <Link to="/vehiculos" className="underline hover:text-amber-100">
+            Registre uno primero
+          </Link>
+          : sin vehículo no hay servicio.
+        </p>
+      )}
+
+      <input
+        value={direccion}
+        onChange={(e) => setDireccion(e.target.value)}
+        className="campo"
+        placeholder="¿Dónde está el vehículo? Dirección o punto de referencia"
+      />
+      <textarea
+        value={descripcion}
+        onChange={(e) => setDescripcion(e.target.value)}
+        className="campo min-h-[90px]"
+        placeholder="¿Qué ocurrió? Por ejemplo: no enciende, se quedaron las llaves adentro, llanta averiada…"
+      />
+
+      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
+
+      <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
+        {mutar.isPending ? 'Enviando…' : 'Enviar solicitud'}
+      </button>
+    </div>
+  );
+}
 
 /** Panel de clasificacion: es el paso donde la central decide el tipo de
  *  servicio y a quien se lo asigna. De ahi nace el expediente. */
@@ -72,6 +185,7 @@ export function Servicios() {
   const rol = sesion.rol();
   const [abierto, setAbierto] = useState<number | null>(null);
   const [cancelando, setCancelando] = useState<number | null>(null);
+  const [solicitando, setSolicitando] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['servicios'],
@@ -83,6 +197,7 @@ export function Servicios() {
     cliente.invalidateQueries({ queryKey: ['indicadores'] });
     setAbierto(null);
     setCancelando(null);
+    setSolicitando(false);
   };
 
   const avanzar = useMutation({
@@ -96,16 +211,27 @@ export function Servicios() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold">Gestionar servicio</h2>
-        <p className="text-sm text-slate-400">
-          {esTecnico
-            ? 'Los servicios que tiene asignados.'
-            : rol === 'CLIENTE'
-              ? 'Los servicios que ha solicitado.'
-              : 'El cliente solicita, la central clasifica y asigna, y con eso nace el expediente.'}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold">Gestionar servicio</h2>
+          <p className="text-sm text-slate-400">
+            {esTecnico
+              ? 'Los servicios que tiene asignados.'
+              : rol === 'CLIENTE'
+                ? 'Los servicios que ha solicitado.'
+                : 'El cliente solicita, la central clasifica y asigna, y con eso nace el expediente.'}
+          </p>
+        </div>
+
+        {/* El tecnico no solicita: el atiende lo que le asignan. */}
+        {!esTecnico && (
+          <button className="boton" onClick={() => setSolicitando(!solicitando)}>
+            {solicitando ? 'Cerrar' : 'Solicitar servicio'}
+          </button>
+        )}
       </div>
+
+      {solicitando && <Solicitar alTerminar={refrescar} />}
 
       {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
       {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}

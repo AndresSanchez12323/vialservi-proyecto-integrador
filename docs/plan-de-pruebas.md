@@ -37,6 +37,17 @@ Clave de todos los usuarios: `VialServi2026`.
 
 | # | Qué hacer | Resultado esperado |
 |---|---|---|
+| C00a | Entrar como `71234567` (cliente) y mirar el menú | Aparece *Gestionar vehículo e inventario*, con **solo sus dos vehículos** (ABC123 y WKL780) y sin el buscador por placa |
+| C00b | Pulsar *Registrar vehículo* | El formulario **no pregunta por el propietario**: es él. Escribir la placa en minúscula la pasa a mayúscula |
+| C00c | Registrar `hjk456`, Toyota, Corolla Cross, Plateado | Aparece de una vez en la lista, con *Propietario: Santiago Gómez* |
+| C00d | Intentar registrar otra vez la misma placa | **(regla)** "Ya existe un vehículo con esa placa" |
+| C00e | Salir, entrar como `2001` y buscar `HJK` | La central **sí** ve el vehículo que registró el cliente, con su propietario |
+| C00f | Como `2001`, pulsar *Registrar vehículo* | Aquí **sí** sale el selector de propietario, porque la central registra a nombre de otro |
+| C0a | Como `71234567`, pulsar *Solicitar servicio* | Se abre el formulario. **(regla)** No pregunta por el cliente: lo toma de la sesión. En *Vehículo* salen solo los suyos, **incluido el que acaba de registrar** |
+| C0b | Elegir el vehículo, escribir dirección y descripción, y enviar | Aparece de primero en su lista, en **Solicitado**, sin tipo y sin técnico: clasificar es otro paso |
+| C0c | Salir, entrar como `2001` y pulsar *Solicitar servicio* | Aquí **sí** sale el selector de cliente, porque la central pide a nombre de otro. Al elegir uno, la lista de vehículos se acota a los de él |
+| C0d | Como `2001`, mirar la lista | Está la solicitud que acaba de hacer el cliente, con el botón *Clasificar y asignar* |
+| C0e | Entrar como `3001` (técnico) y mirar la cabecera | **(regla)** El técnico no tiene el botón *Solicitar servicio*: él atiende lo que le asignan |
 | C1 | Como `2001`, ir a *Gestionar servicio* | Se ven los 5 servicios, cada uno con su estado |
 | C2 | Buscar el servicio **Solicitado** (placa TNA915) y pulsar *Clasificar y asignar* | Se abre el panel con tipo y técnico |
 | C3 | Elegir tipo **Carro taller** y desplegar la lista de técnicos | **(regla)** Solo aparece Brahian Rendón (mecánica/cerrajería). No aparece Juan Pablo (grúa/conductor) ni Andrés (no disponible) |
@@ -116,17 +127,26 @@ Se ejecutan en la consola (F12 → Consola) **estando dentro como técnico (3001
 | J2 | Lo mismo contra `/api/expedientes/1/cerrar` con `method:'POST'` | **403**: el técnico no puede cerrar, aunque el botón no exista en su pantalla |
 | J3 | `fetch('/api/vehiculos').then(r=>r.status)` sin token | **401** |
 
+Estas dos van **estando dentro como cliente (71234567)**:
+
+| # | Qué hacer | Resultado esperado |
+|---|---|---|
+| J4 | Solicitar un servicio mandando a propósito el `clienteId` de otra persona | **201**, pero el servicio queda a nombre del que inició sesión: el servidor ignora ese campo |
+| J5 | `fetch('/api/clientes', …).then(r=>r.status)` | **403**: el directorio con documentos y teléfonos de terceros no es para el cliente |
+
 ---
 
 ## Resumen de lo que estas pruebas demuestran
 
 1. Cada rol ve y puede cosas distintas, y el filtro es del servidor.
-2. El expediente nace cuando la central clasifica, y concentra la información
+2. El cliente registra su vehículo y solicita su propio servicio, y ambas
+   cosas quedan a su nombre aunque manipule la petición.
+3. El expediente nace cuando la central clasifica, y concentra la información
    de vehículo, cliente, técnico y servicio sin duplicarla.
-3. Quien presta el servicio no puede cerrarlo: separación de funciones.
-4. No se cierra un expediente sin evidencia ni sin que el técnico haya
+4. Quien presta el servicio no puede cerrarlo: separación de funciones.
+5. No se cierra un expediente sin evidencia ni sin que el técnico haya
    terminado.
-5. No se cancela sin motivo, ni se cancela lo ya cerrado.
-6. La evidencia tardía se conserva y se marca, en vez de perderse.
-7. Se distingue la evidencia del cliente de la del técnico, que es lo que
+6. No se cancela sin motivo, ni se cancela lo ya cerrado.
+7. La evidencia tardía se conserva y se marca, en vez de perderse.
+8. Se distingue la evidencia del cliente de la del técnico, que es lo que
    permite responder una reclamación.

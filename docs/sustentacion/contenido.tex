@@ -58,7 +58,8 @@ Inicio de sesión, registro, recuperación y cambio de contraseña, y
 administración de usuarios, roles y permisos. \\ \hline
 Gestionar vehículo e inventario &
 Placa, marca, modelo, color y propietario, junto con el inventario de los objetos
-que quedan dentro del vehículo. Es el punto de partida del sistema. \\ \hline
+que quedan dentro del vehículo. Es el punto de partida del sistema: el cliente
+registra el suyo y la central registra el de cualquiera. \\ \hline
 Gestionar cliente &
 Datos del cliente al que pertenece el vehículo. El expediente enlaza esta
 información; no la duplica. \\ \hline
@@ -90,15 +91,11 @@ queda en manos de la empresa.
 \subsection{Lo que este proyecto no incluye}
 
 \begin{itemize}
+  \item Contratación de personal, compra de equipos móviles o mejoras en la
+        cobertura celular: son decisiones de la organización, no del software.
   \item Atención de accidentes de tránsito con heridos o intervención de entidades
         de salud y de tránsito. VialServi presta asistencia mecánica, técnica y de
         grúa, no atención médica de emergencia.
-  \item Funciones de chat o comunicación en tiempo real entre operarios.
-  \item Contratación de personal, compra de equipos móviles o mejoras en la
-        cobertura celular: son decisiones de la organización, no del software.
-  \item Pruebas de compatibilidad con navegadores muy antiguos, pruebas de
-        seguridad de nivel profesional, pruebas de carga sostenida y plan de
-        recuperación ante desastres.
 \end{itemize}
 
 \subsection{Dependencia entre módulos}
@@ -112,8 +109,7 @@ mismo orden del flujo del servicio y no al contrario.
 
 \subsection{Objetivo general}
 
-Construir, a lo largo de las 14 semanas del Proyecto Integrador, un aplicativo web
-para la gestión de los servicios de carro taller (mecánica y cerrajería), traslado
+Construir un aplicativo web para la gestión de los servicios de carro taller (mecánica y cerrajería), traslado
 en grúa de vehículos y pasajeros, y conductor elegido que presta VialServi, en el
 que cada servicio quede registrado en un expediente único, con el formato que le
 corresponde y con acceso controlado por roles, desde que el cliente lo solicita
@@ -534,7 +530,7 @@ esconder un botón. Es la diferencia entre una restricción real y una aparienci
 \hline
 \textbf{Módulo} & \textbf{Estado} \\ \hline
 Seguridad y control de acceso & Construido \\ \hline
-Gestionar vehículo e inventario & Construido \\ \hline
+Gestionar vehículo e inventario & Construido: el cliente registra el suyo, la central registra el de cualquiera \\ \hline
 Gestionar cliente & Construido \\ \hline
 Gestionar técnico & Construido (consulta) \\ \hline
 Gestionar servicio & Construido: solicitar, clasificar, asignar, avanzar estado y cancelar \\ \hline

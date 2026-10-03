@@ -1,0 +1,941 @@
+{
+  "info": {
+    "name": "VialServi · API",
+    "description": "Colección de pruebas del API de VialServi.\n\nORDEN: ejecute primero la carpeta '1. Acceso' (guarda los tokens de cada rol) y luego '2. Datos base' (guarda los ids que usan las demás peticiones). De ahí en adelante puede correr cualquier carpeta.\n\nLas peticiones marcadas con ✗ son las que DEBEN fallar: comprueban que el servidor impide lo que no se debe permitir.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base", "value": "http://localhost:4000/api" },
+    { "key": "clave", "value": "VialServi2026" },
+    { "key": "tokenCentral", "value": "" },
+    { "key": "tokenTecnico", "value": "" },
+    { "key": "tokenCliente", "value": "" },
+    { "key": "tokenAdmin", "value": "" },
+    { "key": "clienteId", "value": "" },
+    { "key": "vehiculoId", "value": "" },
+    { "key": "tecnicoId", "value": "" },
+    { "key": "servicioId", "value": "" },
+    { "key": "expedienteId", "value": "" },
+    { "key": "expedienteCerradoId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0. Salud",
+      "item": [
+        {
+          "name": "GET /salud · el API responde",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base}}/salud", "host": ["{{base}}"], "path": ["salud"] },
+            "description": "Única ruta sin token. Sirve para saber si el servidor está arriba."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 y estado ok', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().estado).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Acceso",
+      "item": [
+        {
+          "name": "POST /auth/login · central (2001)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"2001\",\n  \"clave\": \"{{clave}}\"\n}" },
+            "url": { "raw": "{{base}}/auth/login", "host": ["{{base}}"], "path": ["auth", "login"] },
+            "description": "Guarda el token en la variable tokenCentral."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('entra y devuelve token', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const c = pm.response.json();",
+                  "  pm.expect(c.token).to.be.a('string');",
+                  "  pm.expect(c.usuario.rol).to.eql('CENTRAL');",
+                  "  pm.collectionVariables.set('tokenCentral', c.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login · técnico (3001)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"3001\",\n  \"clave\": \"{{clave}}\"\n}" },
+            "url": { "raw": "{{base}}/auth/login", "host": ["{{base}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('entra como TECNICO', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const c = pm.response.json();",
+                  "  pm.expect(c.usuario.rol).to.eql('TECNICO');",
+                  "  pm.collectionVariables.set('tokenTecnico', c.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login · cliente (71234567)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"71234567\",\n  \"clave\": \"{{clave}}\"\n}" },
+            "url": { "raw": "{{base}}/auth/login", "host": ["{{base}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('entra como CLIENTE', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const c = pm.response.json();",
+                  "  pm.expect(c.usuario.rol).to.eql('CLIENTE');",
+                  "  pm.collectionVariables.set('tokenCliente', c.token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /auth/login · administrador (1001)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"1001\",\n  \"clave\": \"{{clave}}\"\n}" },
+            "url": { "raw": "{{base}}/auth/login", "host": ["{{base}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('entra como ADMINISTRADOR', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.collectionVariables.set('tokenAdmin', pm.response.json().token);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "✗ POST /auth/login · clave incorrecta",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"2001\",\n  \"clave\": \"equivocada\"\n}" },
+            "url": { "raw": "{{base}}/auth/login", "host": ["{{base}}"], "path": ["auth", "login"] },
+            "description": "Debe dar 401 con el mismo mensaje que un documento inexistente: no se revela si el usuario existe."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('401', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "✗ GET /servicios · sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('401 sin token', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /auth/yo · quién soy",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/auth/yo", "host": ["{{base}}"], "path": ["auth", "yo"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Datos base (guarda los ids)",
+      "item": [
+        {
+          "name": "GET /clientes · guarda clienteId",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/clientes", "host": ["{{base}}"], "path": ["clientes"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('lista de clientes', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const l = pm.response.json();",
+                  "  pm.expect(l.length).to.be.above(0);",
+                  "  pm.collectionVariables.set('clienteId', l[0].id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /tecnicos · guarda tecnicoId",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/tecnicos", "host": ["{{base}}"], "path": ["tecnicos"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('hay un tecnico de mecanica disponible', function () {",
+                  "  const apto = pm.response.json().find(t => t.disponible && t.especialidades.includes('MECANICA'));",
+                  "  pm.expect(apto, 'ningun tecnico apto').to.not.be.undefined;",
+                  "  pm.collectionVariables.set('tecnicoId', apto.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vehiculos · como cliente, guarda vehiculoId",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCliente}}" }],
+            "url": { "raw": "{{base}}/vehiculos", "host": ["{{base}}"], "path": ["vehiculos"] },
+            "description": "El cliente solo recibe sus vehículos: el filtro es del servidor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('solo los vehiculos del cliente', function () {",
+                  "  const l = pm.response.json();",
+                  "  pm.expect(l.length).to.be.above(0);",
+                  "  const dueno = l[0].cliente.id;",
+                  "  pm.expect(l.every(v => v.cliente.id === dueno)).to.be.true;",
+                  "  pm.collectionVariables.set('vehiculoId', l[0].id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /servicios · guarda servicioId y expedienteId",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const l = pm.response.json();",
+                  "const solicitado = l.find(s => s.estado === 'SOLICITADO');",
+                  "if (solicitado) pm.collectionVariables.set('servicioId', solicitado.id);",
+                  "const abierto = l.find(s => s.expediente && !s.expediente.cerradoEn);",
+                  "if (abierto) pm.collectionVariables.set('expedienteId', abierto.expediente.id);",
+                  "const cerrado = l.find(s => s.expediente && s.expediente.cerradoEn);",
+                  "if (cerrado) pm.collectionVariables.set('expedienteCerradoId', cerrado.expediente.id);",
+                  "pm.test('hay un servicio solicitado para clasificar', () => pm.expect(solicitado).to.not.be.undefined);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Cliente",
+      "item": [
+        {
+          "name": "GET /clientes · directorio (central)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/clientes", "host": ["{{base}}"], "path": ["clientes"] }
+          }
+        },
+        {
+          "name": "✗ GET /clientes · como cliente",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCliente}}" }],
+            "url": { "raw": "{{base}}/clientes", "host": ["{{base}}"], "path": ["clientes"] },
+            "description": "403: el directorio lleva documento y teléfono de terceros."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        },
+        {
+          "name": "GET /clientes/:id · detalle con sus vehículos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/clientes/{{clienteId}}", "host": ["{{base}}"], "path": ["clientes", "{{clienteId}}"] }
+          }
+        },
+        {
+          "name": "POST /clientes · crear",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"10203040\",\n  \"nombre\": \"Cliente de prueba Postman\",\n  \"telefono\": \"3001234567\",\n  \"correo\": \"prueba@correo.com\"\n}" },
+            "url": { "raw": "{{base}}/clientes", "host": ["{{base}}"], "path": ["clientes"] },
+            "description": "Repetir esta petición debe dar 409: el documento es único."
+          }
+        },
+        {
+          "name": "PUT /clientes/:id · actualizar",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"telefono\": \"3009998877\"\n}" },
+            "url": { "raw": "{{base}}/clientes/{{clienteId}}", "host": ["{{base}}"], "path": ["clientes", "{{clienteId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Vehículo e inventario",
+      "item": [
+        {
+          "name": "GET /vehiculos · todos (central)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": {
+              "raw": "{{base}}/vehiculos?placa=",
+              "host": ["{{base}}"],
+              "path": ["vehiculos"],
+              "query": [{ "key": "placa", "value": "", "description": "filtro opcional por placa" }]
+            }
+          }
+        },
+        {
+          "name": "POST /vehiculos · el cliente registra el suyo",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCliente}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"placa\": \"PST100\",\n  \"marca\": \"Toyota\",\n  \"modelo\": \"Corolla Cross\",\n  \"color\": \"Plateado\",\n  \"clienteId\": 999999\n}" },
+            "url": { "raw": "{{base}}/vehiculos", "host": ["{{base}}"], "path": ["vehiculos"] },
+            "description": "Se manda a propósito un clienteId ajeno: el servidor lo ignora y pone el de la sesión."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 y queda a nombre del que inicio sesion', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().clienteId).to.not.eql(999999);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "✗ POST /vehiculos · placa repetida",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"placa\": \"ABC123\",\n  \"marca\": \"Mazda\",\n  \"modelo\": \"CX-5\",\n  \"color\": \"Negro\",\n  \"clienteId\": {{clienteId}}\n}" },
+            "url": { "raw": "{{base}}/vehiculos", "host": ["{{base}}"], "path": ["vehiculos"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('409 placa repetida', () => pm.response.to.have.status(409));"] }
+            }
+          ]
+        },
+        {
+          "name": "✗ POST /vehiculos · como técnico",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"placa\": \"ZZZ999\",\n  \"marca\": \"Kia\",\n  \"modelo\": \"Picanto\",\n  \"color\": \"Rojo\",\n  \"clienteId\": {{clienteId}}\n}" },
+            "url": { "raw": "{{base}}/vehiculos", "host": ["{{base}}"], "path": ["vehiculos"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        },
+        {
+          "name": "GET /vehiculos/:id · detalle con inventario",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/vehiculos/{{vehiculoId}}", "host": ["{{base}}"], "path": ["vehiculos", "{{vehiculoId}}"] }
+          }
+        },
+        {
+          "name": "POST /vehiculos/:id/inventario · objeto de valor",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"descripcion\": \"Equipo de carretera\",\n  \"cantidad\": 1\n}" },
+            "url": { "raw": "{{base}}/vehiculos/{{vehiculoId}}/inventario", "host": ["{{base}}"], "path": ["vehiculos", "{{vehiculoId}}", "inventario"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Técnico",
+      "item": [
+        {
+          "name": "GET /tecnicos · hoja de vida y disponibilidad",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/tecnicos", "host": ["{{base}}"], "path": ["tecnicos"] }
+          }
+        },
+        {
+          "name": "POST /tecnicos · crear (solo administrador)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"3009\",\n  \"nombre\": \"Técnico de prueba\",\n  \"telefono\": \"3001112233\",\n  \"especialidades\": \"MECANICA,CERRAJERIA\",\n  \"licencia\": \"C1\",\n  \"disponible\": true\n}" },
+            "url": { "raw": "{{base}}/tecnicos", "host": ["{{base}}"], "path": ["tecnicos"] }
+          }
+        },
+        {
+          "name": "PUT /tecnicos/:id · marcar no disponible",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"disponible\": false\n}" },
+            "url": { "raw": "{{base}}/tecnicos/{{tecnicoId}}", "host": ["{{base}}"], "path": ["tecnicos", "{{tecnicoId}}"] },
+            "description": "Ojo: si lo deja en false, ese técnico deja de aparecer al clasificar. Vuélvalo a poner en true."
+          }
+        },
+        {
+          "name": "✗ POST /tecnicos · como central",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"documento\": \"3010\",\n  \"nombre\": \"No permitido\",\n  \"telefono\": \"3001112233\",\n  \"especialidades\": \"GRUA\"\n}" },
+            "url": { "raw": "{{base}}/tecnicos", "host": ["{{base}}"], "path": ["tecnicos"] },
+            "description": "403: la hoja de vida del técnico la administra el administrador."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Servicio",
+      "item": [
+        {
+          "name": "GET /servicios · central ve todos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] }
+          }
+        },
+        {
+          "name": "GET /servicios · técnico ve solo los suyos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }],
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] }
+          }
+        },
+        {
+          "name": "GET /servicios · cliente ve solo los suyos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCliente}}" }],
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] }
+          }
+        },
+        {
+          "name": "POST /servicios · el cliente solicita",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCliente}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"vehiculoId\": {{vehiculoId}},\n  \"direccion\": \"Carrera 70 con calle 44\",\n  \"descripcion\": \"El vehículo no enciende\"\n}" },
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] },
+            "description": "No se manda clienteId: sale de la sesión. Nace SOLICITADO, sin tipo y sin técnico."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('nace solicitado, sin clasificar', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const s = pm.response.json();",
+                  "  pm.expect(s.estado).to.eql('SOLICITADO');",
+                  "  pm.expect(s.tipo).to.be.null;",
+                  "  pm.expect(s.tecnico).to.be.null;",
+                  "  pm.collectionVariables.set('servicioId', s.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "✗ POST /servicios · vehículo de otro cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCliente}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"vehiculoId\": 1,\n  \"direccion\": \"Carrera 70 con calle 44\",\n  \"descripcion\": \"Intento indebido\"\n}" },
+            "url": { "raw": "{{base}}/servicios", "host": ["{{base}}"], "path": ["servicios"] },
+            "description": "Ponga en vehiculoId el id de un vehículo que NO sea del cliente 71234567 (mírelo con GET /vehiculos como central). Debe responder 409."
+          }
+        },
+        {
+          "name": "PATCH /servicios/:id/clasificar · nace el expediente",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"tipo\": \"CARRO_TALLER\",\n  \"tecnicoId\": {{tecnicoId}}\n}" },
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}/clasificar", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}", "clasificar"] },
+            "description": "tipo: GRUA | CARRO_TALLER | CONDUCTOR_ELEGIDO. Al clasificar se crea el expediente en la misma transacción."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('queda asignado y con expediente', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const s = pm.response.json();",
+                  "  pm.expect(s.estado).to.eql('ASIGNADO');",
+                  "  pm.expect(s.expediente.consecutivo).to.match(/^EXP-/);",
+                  "  pm.collectionVariables.set('expedienteId', s.expediente.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "✗ PATCH /servicios/:id/clasificar · como técnico",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"tipo\": \"GRUA\",\n  \"tecnicoId\": {{tecnicoId}}\n}" },
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}/clasificar", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}", "clasificar"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /servicios/:id/estado · iniciar atención",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"EN_EJECUCION\"\n}" },
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}/estado", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}", "estado"] },
+            "description": "Solo acepta EN_EJECUCION o TERMINADO. CERRADO no: eso es del cierre del expediente."
+          }
+        },
+        {
+          "name": "PATCH /servicios/:id/estado · marcar terminado",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"estado\": \"TERMINADO\"\n}" },
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}/estado", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}", "estado"] }
+          }
+        },
+        {
+          "name": "✗ PATCH /servicios/:id/cancelar · sin motivo",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"motivo\": \"\"\n}" },
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}/cancelar", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}", "cancelar"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('400 exige motivo', () => pm.response.to.have.status(400));"] }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /servicios/:id/cancelar · con motivo",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCentral}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"motivo\": \"El cliente logró encender el vehículo\"\n}" },
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}/cancelar", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}", "cancelar"] },
+            "description": "OJO: esto cancela el servicio que venía usando. Déjelo de último, o use otro servicioId."
+          }
+        },
+        {
+          "name": "GET /servicios/:id · detalle",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/servicios/{{servicioId}}", "host": ["{{base}}"], "path": ["servicios", "{{servicioId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Expediente",
+      "item": [
+        {
+          "name": "GET /expedientes/:id · todo el expediente",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}"] },
+            "description": "Trae servicio, cliente, vehículo con inventario, técnico, evidencias (ordenadas por hora de captura) y novedades."
+          }
+        },
+        {
+          "name": "PATCH /expedientes/:id/observaciones · campo del técnico",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"observaciones\": \"Se encontró la batería descargada y se hizo puente.\",\n  \"version\": 1\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/observaciones", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "observaciones"] },
+            "description": "La versión debe ser mayor que la guardada. Si manda una menor o igual, la respuesta trae descartado: true — así una edición vieja que llega tarde no pisa la nueva."
+          }
+        },
+        {
+          "name": "PATCH /expedientes/:id/observaciones · versión vieja (se descarta)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"observaciones\": \"Texto viejo que llega tarde\",\n  \"version\": 1\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/observaciones", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "observaciones"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 pero descartado, no pisa el texto nuevo', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().descartado).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /expedientes/:id/evidencias · el técnico sube una foto",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idLocal\": \"postman-foto-001\",\n  \"tipo\": \"FOTO\",\n  \"archivo\": \"evidencias/postman-001.jpg\",\n  \"tomadaEn\": \"2026-09-21T14:30:00.000Z\"\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/evidencias", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "evidencias"] },
+            "description": "tipo: FOTO | VIDEO. El idLocal es la llave que genera el dispositivo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('201 la primera vez', () => pm.response.to.have.status(201));"] }
+            }
+          ]
+        },
+        {
+          "name": "POST /expedientes/:id/evidencias · el mismo idLocal (reintento)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idLocal\": \"postman-foto-001\",\n  \"tipo\": \"FOTO\",\n  \"archivo\": \"evidencias/postman-001.jpg\"\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/evidencias", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "evidencias"] },
+            "description": "Es la prueba del trabajo sin señal: el reintento se reconoce, no se duplica."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200, no 201: reconocida y no duplicada', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /expedientes/:id/evidencias · la sube el cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenCliente}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idLocal\": \"postman-cliente-001\",\n  \"tipo\": \"FOTO\",\n  \"archivo\": \"evidencias/postman-cliente.jpg\"\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/evidencias", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "evidencias"] },
+            "description": "Queda con subidaPor.rol = CLIENTE: así se distingue de la del técnico."
+          }
+        },
+        {
+          "name": "POST /expedientes/:id/evidencias · a un expediente ya cerrado",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idLocal\": \"postman-tardia-001\",\n  \"tipo\": \"FOTO\",\n  \"archivo\": \"evidencias/postman-tardia.jpg\"\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteCerradoId}}/evidencias", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteCerradoId}}", "evidencias"] },
+            "description": "No se rechaza: se guarda con posteriorAlCierre = true."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 y marcada como posterior al cierre', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  pm.expect(pm.response.json().posteriorAlCierre).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /expedientes/:id/novedades",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idLocal\": \"postman-novedad-001\",\n  \"descripcion\": \"El cliente no estaba en el sitio a la llegada.\"\n}" },
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/novedades", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "novedades"] }
+          }
+        },
+        {
+          "name": "✗ POST /expedientes/:id/cerrar · como técnico",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }],
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/cerrar", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "cerrar"] },
+            "description": "403: quien presta el servicio no declara cerrada la evidencia de que existió."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        },
+        {
+          "name": "POST /expedientes/:id/cerrar · la central cierra",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/expedientes/{{expedienteId}}/cerrar", "host": ["{{base}}"], "path": ["expedientes", "{{expedienteId}}", "cerrar"] },
+            "description": "Exige que el servicio esté TERMINADO y que haya al menos una evidencia. Si no, 409. Repetirlo también da 409."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Históricos y reportes",
+      "item": [
+        {
+          "name": "GET /reportes/indicadores",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": { "raw": "{{base}}/reportes/indicadores", "host": ["{{base}}"], "path": ["reportes", "indicadores"] }
+          }
+        },
+        {
+          "name": "✗ GET /reportes/indicadores · como técnico",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenTecnico}}" }],
+            "url": { "raw": "{{base}}/reportes/indicadores", "host": ["{{base}}"], "path": ["reportes", "indicadores"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        },
+        {
+          "name": "GET /reportes/historial?placa=ABC123",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenCentral}}" }],
+            "url": {
+              "raw": "{{base}}/reportes/historial?placa=ABC123",
+              "host": ["{{base}}"],
+              "path": ["reportes", "historial"],
+              "query": [{ "key": "placa", "value": "ABC123" }]
+            },
+            "description": "La consulta que resuelve una reclamación meses después."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Pendiente",
+      "item": [
+        {
+          "name": "GET /usuarios · módulo no implementado",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{tokenAdmin}}" }],
+            "url": { "raw": "{{base}}/usuarios", "host": ["{{base}}"], "path": ["usuarios"] },
+            "description": "501 a propósito: la navegación y el API dicen lo mismo, el módulo está declarado pero no construido."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('501 no implementado', () => pm.response.to.have.status(501));"] }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

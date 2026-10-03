@@ -7,7 +7,9 @@ export const rutasServicios = Router();
 rutasServicios.use(autenticar);
 
 const solicitud = z.object({
-  clienteId: z.coerce.number().int().positive(),
+  // va opcional porque cuando solicita el propio cliente no se recibe: se
+  // toma de su sesion. La central si lo envia, porque pide a nombre de otro.
+  clienteId: z.coerce.number().int().positive().optional(),
   vehiculoId: z.coerce.number().int().positive(),
   direccion: z.string().min(5),
   descripcion: z.string().min(5),
@@ -53,10 +55,44 @@ rutasServicios.get('/:id', async (req, res) => {
   res.json(s);
 });
 
+/** La solicitud del servicio. La hace el cliente, o la central cuando el
+ *  cliente llama por telefono. Nace en SOLICITADO, sin tipo y sin tecnico:
+ *  eso lo decide despues la central al clasificar. */
 rutasServicios.post('/', exigirRol('CENTRAL', 'ADMINISTRADOR', 'CLIENTE'), async (req, res) => {
   const datos = solicitud.safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
-  const creado = await prisma.servicio.create({ data: datos.data, include: incluir });
+
+  const sesion = req.sesion!;
+  let clienteId = datos.data.clienteId;
+
+  if (sesion.rol === 'CLIENTE') {
+    // El cliente solo solicita para si mismo: el clienteId sale de la sesion
+    // y se ignora el que venga en la peticion, para que nadie pueda pedir un
+    // servicio a nombre de otra persona.
+    const propio = await prisma.cliente.findUnique({ where: { usuarioId: sesion.id } });
+    if (!propio) return res.status(403).json({ error: 'Su usuario no esta enlazado a un cliente' });
+    clienteId = propio.id;
+  } else if (!clienteId) {
+    return res.status(400).json({ error: 'Falta indicar el cliente' });
+  }
+
+  // El vehiculo tiene que ser del cliente que solicita: el historial se
+  // consulta por placa, y un cruce equivocado lo dañaria de raiz.
+  const vehiculo = await prisma.vehiculo.findUnique({ where: { id: datos.data.vehiculoId } });
+  if (!vehiculo) return res.status(404).json({ error: 'Vehiculo no encontrado' });
+  if (vehiculo.clienteId !== clienteId) {
+    return res.status(409).json({ error: 'El vehiculo no pertenece a ese cliente' });
+  }
+
+  const creado = await prisma.servicio.create({
+    data: {
+      clienteId,
+      vehiculoId: datos.data.vehiculoId,
+      direccion: datos.data.direccion,
+      descripcion: datos.data.descripcion,
+    },
+    include: incluir,
+  });
   res.status(201).json(creado);
 });
 
