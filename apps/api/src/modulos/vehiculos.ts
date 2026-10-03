@@ -14,6 +14,10 @@ const vehiculo = z.object({
   clienteId: z.coerce.number().int().positive().optional(),
 });
 
+// Tope de vehiculos que un cliente puede registrar por su cuenta. Si necesita
+// mas, lo registra la central. Cambiar aqui el valor ajusta la regla.
+export const MAX_VEHICULOS_CLIENTE = 3;
+
 const objeto = z.object({
   descripcion: z.string().min(3),
   cantidad: z.coerce.number().int().positive().default(1),
@@ -83,6 +87,12 @@ rutasVehiculos.post('/', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async
     // nombre de otra persona.
     const propio = await prisma.cliente.findUnique({ where: { usuarioId: sesion.id } });
     if (!propio) return res.status(403).json({ error: 'Su usuario no esta enlazado a un cliente' });
+    const cuantos = await prisma.vehiculo.count({ where: { clienteId: propio.id } });
+    if (cuantos >= MAX_VEHICULOS_CLIENTE) {
+      return res.status(403).json({
+        error: `Ya tiene ${MAX_VEHICULOS_CLIENTE} vehiculos registrados. Para registrar otro, comuniquese con la central.`,
+      });
+    }
     clienteId = propio.id;
   } else if (!clienteId) {
     return res.status(400).json({ error: 'Falta indicar el propietario' });

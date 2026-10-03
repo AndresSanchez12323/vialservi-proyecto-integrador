@@ -55,6 +55,15 @@ export const enviar = <T>(ruta: string, metodo: string, cuerpo?: unknown) =>
 export type Cliente = {
   id: number; documento: string; nombre: string; telefono: string; correo?: string | null;
   _count?: { vehiculos: number; servicios: number };
+  servicios?: ServicioResumen[];
+};
+
+// Resumen para el control de la central: situación de cada servicio del cliente.
+export type ServicioResumen = {
+  id: number; estado: string; tipo: string | null; tipoSolicitado?: string | null;
+  direccion: string; solicitadoEn: string;
+  vehiculo: { placa: string };
+  expediente: { id: number; consecutivo: string; cerradoEn: string | null } | null;
 };
 
 export type Vehiculo = {
@@ -67,10 +76,11 @@ export type Tecnico = {
   id: number; documento: string; nombre: string; telefono: string;
   especialidades: string; licencia?: string | null; disponible: boolean;
   _count?: { servicios: number };
+  activos?: number;
 };
 
 export type Servicio = {
-  id: number; tipo: string | null; estado: string; direccion: string; descripcion: string;
+  id: number; tipo: string | null; tipoSolicitado?: string | null; estado: string; direccion: string; descripcion: string;
   solicitadoEn: string; motivoCancelacion?: string | null;
   cliente: { id: number; nombre: string; documento: string; telefono: string };
   vehiculo: { id: number; placa: string; marca: string; modelo: string; color: string };

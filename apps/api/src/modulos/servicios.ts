@@ -11,6 +11,8 @@ const solicitud = z.object({
   // toma de su sesion. La central si lo envia, porque pide a nombre de otro.
   clienteId: z.coerce.number().int().positive().optional(),
   vehiculoId: z.coerce.number().int().positive(),
+  // El cliente indica qué cree necesitar; la central confirma al clasificar.
+  tipoSolicitado: z.enum(['GRUA', 'CARRO_TALLER', 'CONDUCTOR_ELEGIDO']).optional(),
   direccion: z.string().min(5),
   descripcion: z.string().min(5),
 });
@@ -88,6 +90,7 @@ rutasServicios.post('/', exigirRol('CENTRAL', 'ADMINISTRADOR', 'CLIENTE'), async
     data: {
       clienteId,
       vehiculoId: datos.data.vehiculoId,
+      tipoSolicitado: datos.data.tipoSolicitado,
       direccion: datos.data.direccion,
       descripcion: datos.data.descripcion,
     },

@@ -7,6 +7,9 @@ export const ESTADOS: Record<string, { texto: string; clase: string }> = {
   CANCELADO:    { texto: 'Cancelado',    clase: 'bg-rose-400/20 text-rose-200 border border-rose-300/30' },
 };
 
+// Mismo tope que MAX_VEHICULOS_CLIENTE en apps/api/src/modulos/vehiculos.ts.
+export const MAX_VEHICULOS_CLIENTE = 3;
+
 export const TIPOS: Record<string, string> = {
   GRUA: 'Traslado en grúa',
   CARRO_TALLER: 'Carro taller',
