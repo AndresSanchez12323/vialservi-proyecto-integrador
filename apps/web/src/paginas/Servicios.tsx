@@ -83,6 +83,31 @@ export function Servicios() {
     queryFn: () => pedir<Servicio[]>('/servicios'),
   });
 
+  // Apartado del técnico: su hoja de vida, sus pestañas por estado y su
+  // disponibilidad, que la central ve en tiempo real.
+  const esTecnico = rol === 'TECNICO';
+  const [pestana, setPestana] = useState<'pendientes' | 'progreso' | 'historial'>('pendientes');
+  const { data: ficha } = useQuery({
+    queryKey: ['tecnicoYo'],
+    queryFn: () => pedir<Tecnico>('/tecnicos/yo'),
+    enabled: esTecnico,
+  });
+
+  const cambiarDisponibilidad = useMutation({
+    mutationFn: (disponible: boolean) =>
+      enviar<Tecnico>('/tecnicos/yo/disponibilidad', 'PATCH', { disponible }),
+    onSuccess: () => {
+      cliente.invalidateQueries({ queryKey: ['tecnicoYo'] });
+      cliente.invalidateQueries({ queryKey: ['tecnicos'] });
+    },
+  });
+
+  const porPestana = (s: Servicio) =>
+    pestana === 'pendientes' ? s.estado === 'ASIGNADO'
+    : pestana === 'progreso' ? s.estado === 'EN_EJECUCION'
+    : ['TERMINADO', 'CERRADO', 'CANCELADO'].includes(s.estado);
+  const lista = esTecnico ? (data ?? []).filter(porPestana) : (data ?? []);
+
   // Vehículos propios para el formulario de solicitud del cliente.
   const { data: yo } = useQuery({
     queryKey: ['clienteYo'],
@@ -122,7 +147,6 @@ export function Servicios() {
   });
 
   const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
-  const esTecnico = rol === 'TECNICO';
 
   return (
     <div className="space-y-4">
@@ -130,12 +154,68 @@ export function Servicios() {
         <h2 className="text-xl font-semibold">Gestionar servicio</h2>
         <p className="text-sm text-slate-400">
           {esTecnico
-            ? 'Los servicios que tiene asignados.'
+            ? 'Sus asignados, su historial y su disponibilidad para la central.'
             : rol === 'CLIENTE'
               ? 'Los servicios que ha solicitado.'
               : 'El cliente solicita, la central clasifica y asigna, y con eso nace el expediente.'}
         </p>
       </div>
+
+      {esTecnico && (
+        <section className="vidrio flex flex-wrap items-center justify-between gap-3 p-5">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Mi disponibilidad</p>
+            <p className="mt-1 text-sm">
+              {ficha ? (
+                <span className={`etiqueta ${ficha.disponible ? 'border border-emerald-300/40 bg-emerald-400/15 text-emerald-200' : 'border border-amber-300/40 bg-amber-400/15 text-amber-200'}`}>
+                  {ficha.disponible ? 'Disponible para asignar' : 'Ocupado en servicio'}
+                </span>
+              ) : (
+                <span className="text-slate-500">Cargando…</span>
+              )}
+              <span className="ml-2 text-xs text-slate-400">La central lo ve en tiempo real.</span>
+            </p>
+          </div>
+          <button
+            className="boton-suave"
+            disabled={!ficha || cambiarDisponibilidad.isPending}
+            onClick={() => ficha && cambiarDisponibilidad.mutate(!ficha.disponible)}
+            title={ficha?.disponible ? 'Avisar que está ocupado' : 'Avisar que está libre'}
+          >
+            {ficha?.disponible ? 'Marcarme ocupado' : 'Marcarme disponible'}
+          </button>
+        </section>
+      )}
+
+      {esTecnico && (
+        <div className="vidrio flex gap-1 p-1.5" role="tablist">
+          {([
+            ['pendientes', 'Asignados'],
+            ['progreso', 'En progreso'],
+            ['historial', 'Historial'],
+          ] as const).map(([clave, texto]) => {
+            const n = (data ?? []).filter((s) =>
+              clave === 'pendientes' ? s.estado === 'ASIGNADO'
+              : clave === 'progreso' ? s.estado === 'EN_EJECUCION'
+              : ['TERMINADO', 'CERRADO', 'CANCELADO'].includes(s.estado),
+            ).length;
+            return (
+              <button
+                key={clave}
+                role="tab"
+                onClick={() => setPestana(clave)}
+                className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
+                  pestana === clave
+                    ? 'bg-amber-400/20 font-medium text-amber-200'
+                    : 'text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {texto} <span className="font-mono text-xs opacity-80">({n})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {esCliente && (
         <div className="vidrio space-y-3 p-5">
@@ -179,7 +259,7 @@ export function Servicios() {
       {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
 
       <div className="space-y-4">
-        {data?.map((s) => (
+        {lista.map((s) => (
           <article key={s.id} className="vidrio p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -259,8 +339,14 @@ export function Servicios() {
           </article>
         ))}
 
-        {data?.length === 0 && (
-          <p className="vidrio p-6 text-sm text-slate-400">No hay servicios para mostrar.</p>
+        {lista.length === 0 && (
+          <p className="vidrio p-6 text-sm text-slate-400">
+            {esTecnico
+              ? pestana === 'historial'
+                ? 'Aún no tiene servicios realizados.'
+                : 'No tiene servicios en este estado.'
+              : 'No hay servicios para mostrar.'}
+          </p>
         )}
       </div>
     </div>

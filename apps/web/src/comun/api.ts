@@ -76,6 +76,7 @@ export type Tecnico = {
   id: number; documento: string; nombre: string; telefono: string;
   especialidades: string; licencia?: string | null; disponible: boolean;
   _count?: { servicios: number };
+  activos?: number;
 };
 
 export type Servicio = {
