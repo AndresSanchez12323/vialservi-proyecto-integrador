@@ -101,4 +101,24 @@ if (config.esProduccion) {
   if (config.origenes.includes('*')) {
     console.warn('[config] CORS_ORIGIN="*" en produccion: cualquier sitio puede llamar al API.');
   }
+
+  // El fallo mas desconcertante que puede tener este sistema: en produccion con
+  // el correo en modo consola, pedir la recuperacion responde "enviamos un
+  // codigo", el codigo queda en el log, y al usuario no le llega nada. No se
+  // puede avisar en la respuesta HTTP —eso revelaria si la cuenta existe— ni
+  // se puede impedir el arranque, porque dejaria el aplicativo caido por algo
+  // que no es critico. Asi que se grita en el log, que es el unico lugar donde
+  // el equipo puede verlo.
+  if (config.CORREO_MODO === 'consola') {
+    console.warn(
+      '\n' +
+        '┌──────────────────────────────────────────────────────────────────┐\n' +
+        '│ AVISO: la recuperacion de contrasena NO ENVIARA CORREOS.         │\n' +
+        '│ CORREO_MODO=consola en produccion: el codigo solo se imprime     │\n' +
+        '│ aqui, en el log. El usuario no recibira nada.                    │\n' +
+        '│ Para enviar de verdad: verifique un remitente en SES y vuelva a  │\n' +
+        '│ desplegar con CorreoRemitente. Ver docs/despliegue-aws.md §5.    │\n' +
+        '└──────────────────────────────────────────────────────────────────┘\n',
+    );
+  }
 }
