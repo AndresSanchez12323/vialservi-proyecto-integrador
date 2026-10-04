@@ -28,14 +28,14 @@ function SelectorUbicacion({
   alCambiar: (p: Punto | null) => void;
 }) {
   const [buscando, setBuscando] = useState(false);
-  const [negada, setNegada] = useState(false);
+  const [motivo, setMotivo] = useState('');
 
   const tomar = async () => {
     setBuscando(true);
-    setNegada(false);
-    const p = await ubicacionActual();
-    if (p) alCambiar(p);
-    else setNegada(true);
+    setMotivo('');
+    const r = await ubicacionActual();
+    if (r.punto) alCambiar(r.punto);
+    else setMotivo(r.error);
     setBuscando(false);
   };
 
@@ -57,10 +57,9 @@ function SelectorUbicacion({
         )}
       </div>
 
-      {negada && (
+      {motivo && (
         <p className="text-xs text-amber-200">
-          No se pudo obtener la ubicación. Puede pulsar el mapa para marcar dónde está, o
-          enviar la solicitud solo con la dirección.
+          {motivo} También puede enviar la solicitud solo con la dirección.
         </p>
       )}
 
@@ -588,6 +587,8 @@ export function Servicios() {
   const [conMotivo, setConMotivo] = useState<{ id: number; accion: 'cancelar' | 'rechazar' } | null>(null);
   const [solicitando, setSolicitando] = useState(false);
   const [ok, setOk] = useState('');
+  // Punto que el tecnico marca en el mapa cuando el equipo no puede ubicarse.
+  const [manual, setManual] = useState<Punto | null>(null);
   const [pestana, setPestana] = useState<'pendientes' | 'progreso' | 'historial'>('pendientes');
 
   const { data, isLoading, error } = useQuery({
@@ -614,10 +615,17 @@ export function Servicios() {
   });
 
   const reportarUbicacion = useMutation({
-    mutationFn: async () => {
-      const p = await ubicacionActual();
-      if (!p) throw new Error('No se pudo obtener la ubicación. Revise el permiso del navegador.');
-      return enviar('/tecnicos/yo/ubicacion', 'PATCH', p);
+    // Acepta un punto marcado a mano: si el equipo no puede ubicarse solo, el
+    // tecnico no puede quedarse sin reportar, porque de su posicion dependen
+    // las distancias y el tiempo estimado de toda la asignacion.
+    mutationFn: async (manual?: Punto) => {
+      let punto = manual;
+      if (!punto) {
+        const r = await ubicacionActual();
+        if (!r.punto) throw new Error(r.error);
+        punto = r.punto;
+      }
+      return enviar('/tecnicos/yo/ubicacion', 'PATCH', punto);
     },
     onSuccess: () => {
       setOk('Ubicación actualizada. La central y el cliente ya la ven.');
@@ -677,7 +685,7 @@ export function Servicios() {
             <button
               className="boton-suave"
               disabled={reportarUbicacion.isPending}
-              onClick={() => { setOk(''); reportarUbicacion.mutate(); }}
+              onClick={() => { setOk(''); reportarUbicacion.mutate(undefined); }}
               title="La central la usa para enviarle el servicio más cercano"
             >
               {reportarUbicacion.isPending ? 'Ubicando…' : '📍 Reportar mi ubicación'}
@@ -694,9 +702,33 @@ export function Servicios() {
       )}
 
       {reportarUbicacion.error && (
-        <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-          {(reportarUbicacion.error as Error).message}
-        </p>
+        <section className="vidrio space-y-3 p-5">
+          <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            {(reportarUbicacion.error as Error).message}
+          </p>
+          <div>
+            <p className="text-sm font-medium">Marcarla a mano</p>
+            <p className="mb-2 text-xs text-slate-400">
+              Pulse el mapa donde está. Una posición aproximada sirve: se usa para calcular
+              a qué distancia queda de cada servicio.
+            </p>
+            <Mapa tecnico={manual} alElegir={setManual} alto="16rem" etiquetaTecnico="Aquí estoy" />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="boton"
+              disabled={!manual || reportarUbicacion.isPending}
+              onClick={() => { setOk(''); if (manual) reportarUbicacion.mutate(manual); }}
+            >
+              Reportar este punto
+            </button>
+            {manual && (
+              <span className="font-mono text-xs text-emerald-300">
+                {manual.lat.toFixed(5)}, {manual.lng.toFixed(5)}
+              </span>
+            )}
+          </div>
+        </section>
       )}
 
       {esTecnico && (

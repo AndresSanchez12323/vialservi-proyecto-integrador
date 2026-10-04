@@ -181,19 +181,63 @@ export function Mapa({
   );
 }
 
+/** Resultado de pedir la ubicacion: o el punto, o el motivo de que no haya. */
+export type ResultadoUbicacion =
+  | { punto: Punto; error?: undefined }
+  | { punto?: undefined; error: string };
+
 /**
- * Pide la ubicacion del navegador. Devuelve null si el usuario la niega o el
- * equipo no la tiene: negar el permiso no puede impedir pedir un servicio.
+ * Cada causa dice que hacer, porque son remedios distintos. Antes las tres se
+ * reportaban como "revise el permiso del navegador", que manda a mirar donde no
+ * es cuando el permiso ya esta concedido.
  */
-export const ubicacionActual = (): Promise<Punto | null> =>
-  new Promise((resolver) => {
-    if (!navigator.geolocation) return resolver(null);
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolver({
-        lat: Number(p.coords.latitude.toFixed(6)),
-        lng: Number(p.coords.longitude.toFixed(6)),
-      }),
-      () => resolver(null),
-      { enableHighAccuracy: true, timeout: 8000 },
-    );
-  });
+const MOTIVOS: Record<number, string> = {
+  1: 'El navegador tiene bloqueada la ubicacion para este sitio. Permitala en el candado de la barra de direcciones.',
+  2: 'El equipo no logro determinar donde esta. En Windows suele ser que «permitir que las aplicaciones de escritorio accedan a tu ubicacion» esta apagado, en Configuracion › Privacidad › Ubicacion. Puede marcarla a mano en el mapa.',
+  3: 'La ubicacion tardo demasiado en responder. Intente de nuevo o marquela a mano en el mapa.',
+};
+
+const pedirPosicion = (opciones: PositionOptions) =>
+  new Promise<GeolocationPosition>((ok, mal) =>
+    navigator.geolocation.getCurrentPosition(ok, mal, opciones),
+  );
+
+const comoPunto = (p: GeolocationPosition): Punto => ({
+  lat: Number(p.coords.latitude.toFixed(6)),
+  lng: Number(p.coords.longitude.toFixed(6)),
+});
+
+/**
+ * Pide la ubicacion del navegador.
+ *
+ * Dos intentos a proposito. El primero exige alta precision, que es lo que se
+ * quiere en un telefono con GPS. En un equipo de escritorio no hay GPS y ese
+ * intento suele agotar el tiempo o no encontrar nada, asi que el segundo la
+ * pide sin exigir precision, con mas tiempo y aceptando una lectura reciente
+ * en cache. Una ubicacion aproximada sirve: se usa para calcular a que
+ * distancia esta el tecnico, no para dibujar su calle exacta.
+ *
+ * Si la persona NIEGA el permiso no se reintenta: no hay nada que reintentar.
+ */
+export const ubicacionActual = async (): Promise<ResultadoUbicacion> => {
+  if (!navigator.geolocation) {
+    return { error: 'Este navegador no ofrece geolocalizacion. Marque el punto en el mapa.' };
+  }
+
+  try {
+    return { punto: comoPunto(await pedirPosicion({ enableHighAccuracy: true, timeout: 8000 })) };
+  } catch (primero) {
+    if ((primero as GeolocationPositionError).code === 1) return { error: MOTIVOS[1] };
+
+    try {
+      return {
+        punto: comoPunto(
+          await pedirPosicion({ enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 }),
+        ),
+      };
+    } catch (segundo) {
+      const e = segundo as GeolocationPositionError;
+      return { error: MOTIVOS[e.code] ?? 'No se pudo obtener la ubicacion. Marquela a mano en el mapa.' };
+    }
+  }
+};
