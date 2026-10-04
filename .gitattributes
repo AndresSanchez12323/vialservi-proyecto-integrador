@@ -1,0 +1,11 @@
+# Los scripts de shell y el Dockerfile SIEMPRE con finales de linea LF, incluso
+# en Windows con core.autocrlf=true.
+#
+# Sin esto, al clonar en Windows git convierte estos archivos a CRLF. El shebang
+# queda como "#!/bin/sh\r", y dentro de un contenedor Linux el kernel busca un
+# interprete llamado "sh\r" que no existe. El error que sale es
+# "exec /app/arranque.sh: no such file or directory", que senala al archivo y no
+# a la causa, y cuesta horas de encontrar.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf

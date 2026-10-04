@@ -37,5 +37,22 @@ salida_pila() {
 }
 
 pila_existe() {
-  aws cloudformation describe-stacks --stack-name "$PILA" --region "$REGION" >/dev/null 2>&1
+  local estado
+  estado="$(aws cloudformation describe-stacks --stack-name "$PILA"     --region "$REGION" --query 'Stacks[0].StackStatus' --output text 2>/dev/null)"     || return 1
+
+  # REVIEW_IN_PROGRESS es una pila que nunca se creo: la deja un change set
+  # que no se ejecuto. describe-stacks la reporta, pero no tiene recursos ni
+  # parametros guardados, asi que tratarla como existente lleva a la rama de
+  # "actualizar" y falla pidiendo parametros que no hay de donde reusar.
+  [ "$estado" = "REVIEW_IN_PROGRESS" ] && return 1
+
+  # ROLLBACK_COMPLETE no se puede actualizar, solo borrar. Mejor decirlo que
+  # dejar que aws cloudformation deploy falle con un mensaje opaco.
+  if [ "$estado" = "ROLLBACK_COMPLETE" ]; then
+    fatal "La pila '$PILA' quedo en ROLLBACK_COMPLETE de un intento fallido.
+    Borrela antes de reintentar:
+      aws cloudformation delete-stack --stack-name $PILA --region $REGION
+      aws cloudformation wait stack-delete-complete --stack-name $PILA --region $REGION"
+  fi
+  return 0
 }
