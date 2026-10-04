@@ -18,6 +18,9 @@ import 'leaflet/dist/leaflet.css';
 
 export type Punto = { lat: number; lng: number };
 
+/** Un punto que ademas se sabe de quien es, para rotularlo en el mapa. */
+export type PuntoNombrado = Punto & { etiqueta?: string };
+
 /** Marcador redondo con un emoji, sin imagenes externas. */
 const icono = (emoji: string, color: string) =>
   L.divIcon({
@@ -36,21 +39,45 @@ const icono = (emoji: string, color: string) =>
 const iconoVehiculo = icono('🚘', 'rgba(251,146,60,.95)');
 const iconoTecnico = icono('🔧', 'rgba(56,189,248,.95)');
 
-/** Reencuadra el mapa cuando cambian los puntos que hay que mostrar. */
+/**
+ * Reencuadra el mapa sobre los puntos que hay que mostrar.
+ *
+ * Antes de encuadrar hay que llamar a invalidateSize(). Leaflet mide el
+ * contenedor una sola vez, al montarlo, y en ese momento puede no tener aun su
+ * tamano definitivo; si se encuadra con la medida equivocada, el zoom sale mal
+ * (se ve medio departamento en vez de la ciudad) y los mosaicos quedan a
+ * parches. Por eso ambas cosas van juntas, y se repiten cuando el contenedor
+ * cambia de tamano.
+ */
 function Encuadrar({ puntos }: { puntos: Punto[] }) {
   const mapa = useMap();
 
   useEffect(() => {
-    if (puntos.length === 0) return;
-    if (puntos.length === 1) {
-      mapa.setView([puntos[0].lat, puntos[0].lng], 15);
-      return;
-    }
-    mapa.fitBounds(
-      L.latLngBounds(puntos.map((p) => [p.lat, p.lng] as [number, number])),
-      // Sin margen los marcadores quedan pegados al borde y se cortan.
-      { padding: [40, 40], maxZoom: 15 },
-    );
+    const ajustar = () => {
+      mapa.invalidateSize();
+      if (puntos.length === 0) return;
+      if (puntos.length === 1) {
+        mapa.setView([puntos[0].lat, puntos[0].lng], 15);
+        return;
+      }
+      mapa.fitBounds(
+        L.latLngBounds(puntos.map((p) => [p.lat, p.lng] as [number, number])),
+        // Un margen para que los marcadores no queden pegados al borde, pero
+        // corto: en un mapa bajo, 40 px arriba y abajo se comen un tercio del
+        // alto y obligan a alejar el zoom mas de lo necesario.
+        { padding: [24, 24], maxZoom: 15 },
+      );
+    };
+
+    // Despues del primer pintado, cuando el contenedor ya tiene su tamano.
+    const alPintar = requestAnimationFrame(ajustar);
+    const observador = new ResizeObserver(ajustar);
+    observador.observe(mapa.getContainer());
+
+    return () => {
+      cancelAnimationFrame(alPintar);
+      observador.disconnect();
+    };
     // La dependencia es el contenido, no el arreglo: si se usara `puntos` el
     // efecto correria en cada render porque es un arreglo nuevo cada vez.
   }, [mapa, JSON.stringify(puntos)]);
@@ -63,6 +90,8 @@ type Props = {
   destino?: Punto | null;
   /** Donde esta el tecnico. */
   tecnico?: Punto | null;
+  /** Varios tecnicos a la vez, para el tablero de la central. */
+  tecnicos?: PuntoNombrado[];
   etiquetaDestino?: string;
   etiquetaTecnico?: string;
   alto?: string;
@@ -90,14 +119,17 @@ const MEDELLIN: Punto = { lat: 6.2442, lng: -75.5812 };
 export function Mapa({
   destino,
   tecnico,
+  tecnicos,
   etiquetaDestino = 'Vehículo',
   etiquetaTecnico = 'Técnico',
   alto = '18rem',
   alElegir,
 }: Props) {
+  // Todos los puntos cuentan para el encuadre: si solo contara el primero, un
+  // tablero con varios tecnicos encuadraria sobre uno y dejaria fuera al resto.
   const puntos = useMemo(
-    () => [destino, tecnico].filter((p): p is Punto => !!p),
-    [destino, tecnico],
+    () => [destino, tecnico, ...(tecnicos ?? [])].filter((p): p is Punto => !!p),
+    [destino, tecnico, tecnicos],
   );
   const centro = puntos[0] ?? MEDELLIN;
 
@@ -124,6 +156,11 @@ export function Mapa({
             <Popup>{etiquetaTecnico}</Popup>
           </Marker>
         )}
+        {tecnicos?.map((t, i) => (
+          <Marker key={`${t.lat},${t.lng},${i}`} position={[t.lat, t.lng]} icon={iconoTecnico}>
+            <Popup>{t.etiqueta ?? etiquetaTecnico}</Popup>
+          </Marker>
+        ))}
 
         {/* La linea recta entre los dos puntos. No es la ruta por calles: se
             dibuja punteada justamente para no dar a entender que lo es. */}

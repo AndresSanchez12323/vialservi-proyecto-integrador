@@ -35,7 +35,11 @@ export function Disposicion() {
 
   return (
     <div className="min-h-screen p-4 lg:p-6">
-      <header className="vidrio mb-6 flex flex-wrap items-center justify-between gap-4 px-6 py-4">
+      {/* relative + z-30: .vidrio trae backdrop-blur, y un backdrop-filter crea
+          contexto de apilamiento. Sin z-index propio, la cabecera encierra el
+          desplegable de notificaciones en su capa y las tarjetas del contenido,
+          que van despues en el DOM, se pintan encima. */}
+      <header className="vidrio relative z-30 mb-6 flex flex-wrap items-center justify-between gap-4 px-6 py-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">VialServi</h1>
           <p className="text-xs text-slate-300">

@@ -7,7 +7,7 @@ import {
 } from '../comun/api';
 import { Mapa, ubicacionActual, type Punto } from '../comun/Mapa';
 import {
-  ESTADOS, ESTADOS_CLIENTE, PASOS, TIPOS, fecha, haceCuanto, pasoDe,
+  ESTADOS, ESTADOS_CLIENTE, PASOS, PASOS_CORTOS, TIPOS, fecha, haceCuanto, pasoDe,
 } from '../comun/formato';
 
 /** Especialidad que exige cada tipo de servicio. */
@@ -268,15 +268,28 @@ function Avance({ estado }: { estado: string }) {
   if (actual < 0) return null; // cancelado o rechazado: no hay avance que mostrar
 
   return (
-    <ol className="flex items-center gap-1">
+    // Cada tramo lleva su rotulo debajo: una barra sin texto obliga a pasar el
+    // raton por encima para saber en que va, y en un telefono no hay raton.
+    <ol className="flex items-start gap-1">
       {PASOS.map((p, i) => (
-        <li key={p} className="flex flex-1 items-center gap-1">
+        <li key={p} className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div
             className={`h-1.5 w-full rounded-full ${
               i <= actual ? 'bg-gradient-to-r from-amber-400 to-amber-200' : 'bg-white/10'
             }`}
             title={ESTADOS_CLIENTE[p]}
           />
+          <span
+            className={`truncate text-[11px] leading-tight ${
+              i === actual
+                ? 'font-medium text-amber-200'
+                : i < actual
+                  ? 'text-slate-400'
+                  : 'text-slate-600'
+            }`}
+          >
+            {PASOS_CORTOS[p]}
+          </span>
         </li>
       ))}
     </ol>

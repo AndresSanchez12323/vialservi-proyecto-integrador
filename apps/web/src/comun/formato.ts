@@ -28,6 +28,16 @@ export const PASOS = ['SOLICITADO', 'ASIGNADO', 'EN_EJECUCION', 'TERMINADO', 'CE
 
 export const pasoDe = (estado: string) => PASOS.indexOf(estado as (typeof PASOS)[number]);
 
+/** Rotulo corto de cada paso: el texto largo de ESTADOS_CLIENTE no cabe en
+ *  cinco columnas, y una barra sin rotulos no dice en que va el servicio. */
+export const PASOS_CORTOS: Record<string, string> = {
+  SOLICITADO: 'Solicitado',
+  ASIGNADO: 'Asignado',
+  EN_EJECUCION: 'En atención',
+  TERMINADO: 'Terminado',
+  CERRADO: 'Cerrado',
+};
+
 // Mismo tope que MAX_VEHICULOS_CLIENTE en apps/api/src/modulos/vehiculos.ts.
 export const MAX_VEHICULOS_CLIENTE = 5;
 

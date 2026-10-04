@@ -156,10 +156,10 @@ export function Tecnicos() {
             Para calcular la cercanía a un servicio concreto, ábralo en «Gestionar servicio» y
             use el tablero de asignación.
           </p>
+          {/* Todos, no solo el primero: la seccion se llama «Donde estan». */}
           <Mapa
-            tecnico={{ lat: ubicados[0].lat!, lng: ubicados[0].lng! }}
-            etiquetaTecnico={ubicados[0].nombre}
-            alto="15rem"
+            tecnicos={ubicados.map((t) => ({ lat: t.lat!, lng: t.lng!, etiqueta: t.nombre }))}
+            alto="20rem"
           />
           <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {ubicados.map((t) => (

@@ -79,7 +79,7 @@ export function Notificaciones() {
       </button>
 
       {abierto && (
-        <div className="vidrio absolute right-0 z-50 mt-2 max-h-[28rem] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto p-2 shadow-2xl">
+        <div className="vidrio-flotante absolute right-0 z-50 mt-2 max-h-[28rem] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto p-2 shadow-2xl">
           <div className="flex items-center justify-between px-2 py-1.5">
             <p className="text-xs uppercase tracking-wide text-slate-400">Notificaciones</p>
             {sinLeer > 0 && (
@@ -108,7 +108,9 @@ export function Notificaciones() {
                   <div className="flex items-start gap-2">
                     <span className="mt-0.5 shrink-0">{NOTIFICACIONES[n.tipo] ?? '🔔'}</span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{n.titulo}</p>
+                      {/* Sin truncar a una linea: el titulo lleva la parte accionable
+                          («pendiente de revisar y cerrar») justo al final. */}
+                      <p className="text-sm font-medium leading-snug">{n.titulo}</p>
                       <p className="mt-0.5 text-xs text-slate-300">{n.mensaje}</p>
                       <p className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                         <span>{haceCuanto(n.creadaEn)}</span>
