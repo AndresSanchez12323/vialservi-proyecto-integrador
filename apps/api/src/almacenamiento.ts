@@ -74,8 +74,11 @@ export const claveEvidencia = (datos: {
   categoria: string;
   tipo: string;
   idLocal: string;
+  contentType?: string;
 }): string => {
-  const { extension } = TIPOS[datos.tipo] ?? TIPOS.FOTO;
+  const extension =
+    (datos.contentType && EXTENSIONES[datos.contentType]) ??
+    (TIPOS[datos.tipo] ?? TIPOS.FOTO).extension;
   return [
     'evidencias',
     `exp-${datos.expedienteId}`,
@@ -83,16 +86,25 @@ export const claveEvidencia = (datos: {
   ].join('/');
 };
 
-/** URL prefirmada para que el navegador suba el archivo. */
+/**
+ * URL prefirmada para que el navegador suba el archivo.
+ *
+ * Se firma con el tipo y el tamano que declara el cliente. Eso no es un
+ * detalle: la firma ATA el PUT a esos valores, asi que un archivo mas grande
+ * que el limite no se puede subir aunque alguien llame al API sin pasar por la
+ * pantalla.
+ */
 export const urlDeSubida = async (datos: {
   expedienteId: number;
   placa: string;
   categoria: string;
   tipo: string;
   idLocal: string;
+  contentType?: string;
+  tamano?: number;
 }): Promise<Subida> => {
   const clave = claveEvidencia(datos);
-  const { mime } = TIPOS[datos.tipo] ?? TIPOS.FOTO;
+  const mime = datos.contentType ?? (TIPOS[datos.tipo] ?? TIPOS.FOTO).mime;
   const expiraEn = config.S3_URL_MINUTOS * 60;
 
   if (config.ALMACENAMIENTO_MODO === 'local') {
@@ -108,6 +120,9 @@ export const urlDeSubida = async (datos: {
       Bucket: config.S3_BUCKET_EVIDENCIAS!,
       Key: clave,
       ContentType: mime,
+      // Firmar el tamano es lo que convierte el limite en una regla y no en
+      // una sugerencia de la interfaz.
+      ...(datos.tamano ? { ContentLength: datos.tamano } : {}),
     }),
     { expiresIn: expiraEn },
   );
@@ -131,3 +146,33 @@ export const urlDeLectura = async (clave: string): Promise<string | null> => {
 };
 
 export const almacenamientoActivo = () => config.ALMACENAMIENTO_MODO === 's3';
+
+// ── Limites de los archivos ──────────────────────────────────────────────
+// Son los del Alcance del proyecto: 5 MB por fotografia y 15 MB por clip.
+// Se imponen FIRMANDO la URL con el tamano declarado (ContentLength): si el
+// navegador sube mas o menos bytes de los que dijo, S3 rechaza el PUT. Validar
+// solo en la pantalla no serviria, porque cualquiera puede llamar al API
+// directamente y subir un archivo de gigabytes.
+export const LIMITES: Record<string, { bytes: number; mimes: string[] }> = {
+  FOTO: {
+    bytes: 5 * 1024 * 1024,
+    // heic porque es el formato por omision de los iPhone.
+    mimes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
+  },
+  VIDEO: {
+    bytes: 15 * 1024 * 1024,
+    // quicktime es lo que graba un iPhone; webm, varios Android.
+    mimes: ['video/mp4', 'video/quicktime', 'video/webm'],
+  },
+};
+
+const EXTENSIONES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+};

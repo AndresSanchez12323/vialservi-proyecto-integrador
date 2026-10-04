@@ -143,7 +143,7 @@ no tener que mirar el log. **En producción debe quedar en `false`**.
 | Seguridad | JWT + bcrypt, control por roles en el servidor |
 | Interfaz | React 18 + Vite + Tailwind CSS + TanStack Query |
 | Mapas | Leaflet + OpenStreetMap (sin llave de API) |
-| Archivos | **Amazon S3** con URL prefirmadas (modo local para desarrollar sin AWS) |
+| Archivos | **Amazon S3**: el navegador sube directo con URL prefirmadas (modo local para desarrollar sin AWS) |
 | Correo | **Amazon SES** (modo consola para desarrollar sin AWS) |
 | Despliegue | Docker · ECS Fargate · CloudFront · CloudFormation |
 | Pruebas | Vitest + Supertest |
@@ -194,7 +194,7 @@ desde ahí se puede **crear una cuenta de cliente nueva** para ver el registro.
 npm test
 ```
 
-**81 pruebas** sobre el API real (HTTP y base de datos, no simulaciones):
+**88 pruebas** sobre el API real (HTTP y base de datos, no simulaciones):
 reglas de acceso, estado derivado, verificación de propietario, evidencias por
 formato, notificaciones, recuperación de clave, cercanía y casos de borde.
 
@@ -245,8 +245,7 @@ apps/
 ## Lo que sigue
 
 1. Gestionar usuarios y roles desde la interfaz; alta y edición de técnicos.
-2. Conectar el formulario de evidencias a la subida real: el API ya entrega las
-   URL prefirmadas de S3; falta que la pantalla haga el `PUT` del archivo.
+2. Alta y edición de técnicos desde la interfaz.
 3. **Trabajo sin señal (etapa 2)**: **Dexie.js** sobre IndexedDB para el buzón de
    salida y **vite-plugin-pwa** para que abra sin conexión. Es lo único que
    falta, y es solo código de cliente: la infraestructura ya tiene HTTPS, mismo

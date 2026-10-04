@@ -731,6 +731,107 @@ describe('X. Casos de borde del dia a dia', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────
+describe('A. Subida de evidencias a S3', () => {
+  it('A1 · la clave se deriva del idLocal: reintentar sobreescribe, no duplica', async () => {
+    const { expedienteId } = await servicioEnEjecucion();
+    const cuerpo = {
+      idLocal: `loc-${unico()}`, tipo: 'FOTO', categoria: 'RECEPCION',
+      contentType: 'image/jpeg', tamano: 1024,
+    };
+
+    const primera = await como(tecnico1)(
+      request(app).post(`/api/expedientes/${expedienteId}/evidencias/url-subida`).send(cuerpo),
+    );
+    const segunda = await como(tecnico1)(
+      request(app).post(`/api/expedientes/${expedienteId}/evidencias/url-subida`).send(cuerpo),
+    );
+    expect(primera.status).toBe(200);
+    // Misma clave: el reintento del buzon sin senal escribe sobre el mismo
+    // objeto en vez de dejar copias huerfanas en el bucket.
+    expect(segunda.body.clave).toBe(primera.body.clave);
+    expect(primera.body.clave).toContain(cuerpo.idLocal);
+  });
+
+  it('A2 · la extension sale del tipo real del archivo', async () => {
+    const { expedienteId } = await servicioEnEjecucion();
+    const png = await como(tecnico1)(
+      request(app).post(`/api/expedientes/${expedienteId}/evidencias/url-subida`).send({
+        idLocal: `loc-${unico()}`, tipo: 'FOTO', categoria: 'RECEPCION',
+        contentType: 'image/png', tamano: 2048,
+      }),
+    );
+    expect(png.body.clave).toMatch(/\.png$/);
+  });
+
+  it('A3 · una foto que pasa el limite de 5 MB se rechaza', async () => {
+    const { expedienteId } = await servicioEnEjecucion();
+    const r = await como(tecnico1)(
+      request(app).post(`/api/expedientes/${expedienteId}/evidencias/url-subida`).send({
+        idLocal: `loc-${unico()}`, tipo: 'FOTO', categoria: 'RECEPCION',
+        contentType: 'image/jpeg', tamano: 6 * 1024 * 1024,
+      }),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/5 MB/);
+  });
+
+  it('A4 · un video que pasa el limite de 15 MB se rechaza', async () => {
+    const { expedienteId } = await servicioEnEjecucion();
+    const r = await como(tecnico1)(
+      request(app).post(`/api/expedientes/${expedienteId}/evidencias/url-subida`).send({
+        idLocal: `loc-${unico()}`, tipo: 'VIDEO', categoria: 'ENTREGA',
+        contentType: 'video/mp4', tamano: 20 * 1024 * 1024,
+      }),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/15 MB/);
+  });
+
+  it('A5 · un formato que no es imagen ni video se rechaza', async () => {
+    const { expedienteId } = await servicioEnEjecucion();
+    const r = await como(tecnico1)(
+      request(app).post(`/api/expedientes/${expedienteId}/evidencias/url-subida`).send({
+        idLocal: `loc-${unico()}`, tipo: 'FOTO', categoria: 'DOCUMENTO',
+        contentType: 'application/pdf', tamano: 1024,
+      }),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/Formato no admitido/i);
+  });
+
+  it('A6 · la URL de lectura exige permiso sobre ese expediente', async () => {
+    const { expedienteId } = await servicioEnEjecucion();
+    await subirEvidencia(tecnico1, expedienteId, 'RECEPCION');
+    const ev = await prisma.evidencia.findFirstOrThrow({ where: { expedienteId } });
+
+    const propio = await como(tecnico1)(
+      request(app).get(`/api/expedientes/${expedienteId}/evidencias/${ev.id}/url`),
+    );
+    expect(propio.status).toBe(200);
+    expect(propio.body.clave).toBe(ev.archivo);
+
+    // El tecnico2 no atiende ese servicio.
+    const ajeno = await como(tecnico2)(
+      request(app).get(`/api/expedientes/${expedienteId}/evidencias/${ev.id}/url`),
+    );
+    expect(ajeno.status).toBe(403);
+  });
+
+  it('A7 · no se puede pedir la URL de una evidencia de otro expediente', async () => {
+    const a = await servicioEnEjecucion();
+    const b = await servicioEnEjecucion();
+    await subirEvidencia(tecnico1, b.expedienteId, 'RECEPCION');
+    const deB = await prisma.evidencia.findFirstOrThrow({ where: { expedienteId: b.expedienteId } });
+
+    // Se pide con el id del expediente A una evidencia que es de B.
+    const r = await como(tecnico1)(
+      request(app).get(`/api/expedientes/${a.expedienteId}/evidencias/${deB.id}/url`),
+    );
+    expect(r.status).toBe(404);
+  });
+});
+
 // ── Ayudantes del recorrido ──────────────────────────────────────────────
 // Construyen el servicio por las RUTAS del API y no escribiendo en la base,
 // de modo que cada prueba recorre el mismo camino que la aplicacion real.

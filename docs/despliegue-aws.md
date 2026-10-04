@@ -277,10 +277,11 @@ cambiarla**:
 | Reintento que no duplique | ✅ `idLocal` idempotente, y la clave de S3 se deriva de él: reintentar **sobrescribe** el mismo objeto |
 | Que un envío tardío no pise otro dato | ✅ campos separados por rol y estado derivado |
 
-Lo que falta es **solo código de cliente**: `Dexie.js` para el buzón en
-IndexedDB y `vite-plugin-pwa` para el service worker. El flujo será: guardar en
-el buzón → pedir URL a `POST /api/expedientes/:id/evidencias/url-subida` →
-`PUT` a S3 → registrar con `POST /api/expedientes/:id/evidencias`.
+El flujo de subida **ya está construido y funcionando** en
+`apps/web/src/comun/subida.ts`: pedir URL → `PUT` a S3 → registrar. Lo que falta
+es solo envolverlo en una cola: `Dexie.js` para el buzón en IndexedDB y
+`vite-plugin-pwa` para el service worker. Como los tres pasos ya están
+separados, el buzón solo tiene que reintentar el paso 2.
 
 ### HTTPS de punta a punta
 
@@ -311,7 +312,7 @@ PostgreSQL, así que la búsqueda por placa se habría roto sola en producción.
 npm run base:arriba    # PostgreSQL 16 en Docker
 npm run setup          # .env, migraciones y datos de demostración
 npm run dev            # API en :4000, interfaz en :5173
-npm test               # 81 pruebas
+npm test               # 88 pruebas
 ```
 
 Si no pueden usar Docker, sirve cualquier PostgreSQL 16: basta apuntar

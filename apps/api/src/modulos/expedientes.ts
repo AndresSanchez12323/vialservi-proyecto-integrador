@@ -5,7 +5,7 @@ import { prisma } from '../prisma.js';
 import { autenticar, exigirRol } from '../auth.js';
 import { recalcularEstado } from '../estado.js';
 import { evidenciasRequeridas, faltantes, formatoDe } from '../formatos.js';
-import { almacenamientoActivo, urlDeLectura, urlDeSubida } from '../almacenamiento.js';
+import { LIMITES, almacenamientoActivo, urlDeLectura, urlDeSubida } from '../almacenamiento.js';
 import {
   avisar,
   usuarioDelCliente,
@@ -352,9 +352,26 @@ rutasExpedientes.post('/:id/evidencias/url-subida', async (req, res) => {
       categoria: z
         .enum(['GENERAL', 'RECEPCION', 'ENTREGA', 'DANO', 'FIRMA_CEDULA', 'DOCUMENTO'])
         .default('GENERAL'),
+      // Tipo y tamano reales del archivo. Se firman, asi que el limite se
+      // impone en S3 y no depende de que la pantalla lo respete.
+      contentType: z.string().min(3).optional(),
+      tamano: z.coerce.number().int().positive().optional(),
     })
     .safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
+
+  const limite = LIMITES[datos.data.tipo];
+  if (datos.data.contentType && !limite.mimes.includes(datos.data.contentType)) {
+    return res.status(400).json({
+      error: `Formato no admitido para ${datos.data.tipo.toLowerCase()}. Se aceptan: ${limite.mimes.join(', ')}`,
+    });
+  }
+  if (datos.data.tamano && datos.data.tamano > limite.bytes) {
+    const mb = Math.round(limite.bytes / 1024 / 1024);
+    return res.status(400).json({
+      error: `El archivo supera el limite de ${mb} MB para ${datos.data.tipo.toLowerCase()}.`,
+    });
+  }
 
   const exp = await prisma.expediente.findUnique({
     where: { id: Number(req.params.id) },
@@ -384,6 +401,8 @@ rutasExpedientes.post('/:id/evidencias/url-subida', async (req, res) => {
       categoria: datos.data.categoria,
       tipo: datos.data.tipo,
       idLocal: datos.data.idLocal,
+      contentType: datos.data.contentType,
+      tamano: datos.data.tamano,
     }),
   );
 });
