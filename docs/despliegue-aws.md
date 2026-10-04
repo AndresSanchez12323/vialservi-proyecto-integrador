@@ -195,24 +195,64 @@ aunque arranquen dos tareas a la vez.
 
 ## 5. Correo de recuperación con SES
 
-Sin configurar, el API funciona igual: los códigos salen en CloudWatch. Para
-enviar correos de verdad:
+> ⚠️ **Si pidieron la recuperación y no llegó ningún código, lo normal es que
+> sea esto.** Recién desplegado, el API queda en `CORREO_MODO=consola`: el
+> código se genera, se guarda y se valida bien, pero **solo se imprime en
+> CloudWatch**. Al usuario no le llega nada, y la pantalla no puede avisarlo
+> —decir «esa cuenta no tiene correo» revelaría qué cédulas existen—. Desde el
+> arranque el API grita este aviso en el log; búsquenlo con
+> `aws logs tail /ecs/vialservi-api --region us-east-1`.
 
-1. Verifiquen una dirección:
-   ```bash
-   aws ses verify-email-identity --email-address soporte@sudominio.com --region us-east-1
-   ```
-   Llega un correo de confirmación; hay que abrir el enlace.
-2. Pongan esa dirección en la pila:
-   ```bash
-   ./infra/crear-infraestructura.sh   # pregunta por el remitente
-   ```
+Para que los correos salgan de verdad hay que hacer **tres** cosas. Las tres,
+no una:
 
-> **El "sandbox" de SES.** Una cuenta nueva solo puede enviar a direcciones
-> **verificadas**. Para la demostración, verifiquen también el correo del
-> usuario de prueba. Para enviar a cualquiera hay que pedir salir del sandbox
-> en la consola de SES (Account dashboard → Request production access); tarda
-> unas horas.
+**1. Verificar el remitente en SES.**
+
+```bash
+aws ses verify-email-identity --email-address tucorreo@gmail.com --region us-east-1
+```
+
+Llega un correo de confirmación; hay que abrir el enlace. Sirve cualquier
+dirección real a la que tengan acceso: no hace falta dominio propio.
+
+**2. Volver a desplegar la pila con esa dirección.**
+
+```bash
+./infra/crear-infraestructura.sh    # pregunta por el remitente
+```
+
+Eso cambia `CORREO_MODO` de `consola` a `ses` en la definición de tarea. Sin
+este paso el paso 1 no sirve de nada.
+
+**3. Probar con una dirección que exista de verdad.**
+
+Aquí está la trampa que más tiempo cuesta: **los correos de los usuarios de
+demostración son ficticios** (`santiago@correo.com`, `admin@vialservi.co`…).
+Si piden la recuperación con la cédula `71234567`, el código se manda a
+`santiago@correo.com`, que no existe, y no llega nada **aunque SES esté
+perfecto**.
+
+Para probarlo de verdad: **creen una cuenta nueva** desde «Crear cuenta de
+cliente» con su correo real, y recuperen esa. Es además lo que conviene mostrar
+en la sustentación, porque recorre el registro y la recuperación en el mismo
+acto.
+
+> **El "sandbox" de SES.** Una cuenta nueva de AWS solo puede enviar a
+> direcciones **verificadas**, no solo desde ellas. O sea: hay que verificar
+> también la dirección que RECIBE. Si usan la misma para las dos cosas, con el
+> paso 1 ya quedó. Para enviar a cualquiera hay que pedir salir del sandbox en
+> la consola de SES (Account dashboard → Request production access); tarda unas
+> horas y para la sustentación no hace falta.
+
+### Comprobar en qué modo quedó
+
+```bash
+aws ecs describe-task-definition --task-definition vialservi-api --region us-east-1 \
+  --query "taskDefinition.containerDefinitions[0].environment[?name=='CORREO_MODO']"
+```
+
+Si devuelve `consola`, los correos no salen. Si devuelve `ses`, salen y los
+rechazos de SES quedan en CloudWatch con el motivo.
 
 ---
 
@@ -243,6 +283,7 @@ curl https://dXXXXXXXXXXXX.cloudfront.net/api/listo
 | `/api/listo` responde 503 | El API está vivo pero no llega a RDS. Revisen que `SgBaseDatos` admita a `SgApi`. |
 | 502 o 504 desde CloudFront | El balanceador no tiene destinos sanos. Vean el *target group* en la consola de EC2. |
 | El login responde 401 con la clave correcta | La base está vacía: falta cargar los datos de demostración (sección 3). |
+| Pedí la recuperación y no llegó ningún correo | `CORREO_MODO=consola` (lo más común), o SES sin remitente verificado, o el usuario tiene un correo ficticio del seed. Las tres se resuelven en la sección 5. |
 | Cambié el SPA y sigo viendo lo viejo | Falta la invalidación. `desplegar-web.sh` ya la hace; esperen 1–2 minutos. |
 | Una recarga en `/expedientes/3` da error | Ya está resuelto con las respuestas de error 403/404 → `index.html`. Si lo ven, la distribución quedó mal creada. |
 | `AlreadyExistsException` al crear | El nombre del bucket ya existe (son globales). Cambien `PROYECTO`. |

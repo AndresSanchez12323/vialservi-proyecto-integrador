@@ -193,6 +193,10 @@ rutasAuth.post('/recuperar', async (req, res) => {
       para: usuario.correo,
       ...correoRecuperacion(usuario.nombre, codigo, config.CODIGO_VIGENCIA_MINUTOS),
     });
+    // Se registra la direccion a la que se intento enviar, NUNCA el codigo.
+    // Sin esta linea, diagnosticar "no me llega el correo" obliga a entrar a la
+    // base de datos para averiguar a que direccion se mando.
+    console.log(`[recuperar] codigo emitido para el documento ${usuario.documento}, enviado a ${usuario.correo}`);
   } catch (error) {
     console.error('[recuperar] no se pudo enviar el correo:', error instanceof Error ? error.message : error);
   }
