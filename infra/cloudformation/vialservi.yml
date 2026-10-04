@@ -193,9 +193,18 @@ Resources:
     Properties:
       DBInstanceIdentifier: !Sub '${Proyecto}-postgres'
       Engine: postgres
-      EngineVersion: '16'
-      # db.t4g.micro entra en la capa gratuita los primeros 12 meses.
-      DBInstanceClass: db.t4g.micro
+      # Version completa, no '16' a secas: AWS retiro la mayor sin minor y ya no
+      # crea instancias con ella. Se queda en la familia 16 para no separarse de
+      # postgres:16-alpine, que es el que usa docker-compose en local.
+      EngineVersion: '16.15'
+      # Capa gratuita los primeros 12 meses, igual que t4g. Se usa t3 y no t4g
+      # porque db.t4g.micro NO se ofrece para PostgreSQL en us-east-1: AWS
+      # responde "no Availability Zones with sufficient capacity", un mensaje
+      # que suena a saturacion pasajera pero significa que esa combinacion no
+      # existe en la region. Comprobar antes de cambiarla:
+      #   aws rds describe-orderable-db-instance-options
+      #     --engine postgres --db-instance-class db.t4g.micro --region us-east-1
+      DBInstanceClass: db.t3.micro
       AllocatedStorage: '20'
       StorageType: gp3
       StorageEncrypted: true
@@ -256,15 +265,19 @@ Resources:
             ExposedHeaders: [ETag]
             MaxAge: 3000
       VersioningConfiguration: { Status: Enabled }
-      LifecycleRules:
+      # La propiedad es LifecycleConfiguration, con las reglas bajo Rules.
+      # Escrita como 'LifecycleRules' el recurso no la reconoce y CloudFormation
+      # rechaza la plantilla entera en la validacion previa.
+      LifecycleConfiguration:
         # Base para la retencion 2+3 anos del alcance: a los dos anos el archivo
         # pasa a una clase mas barata en vez de borrarse. El borrado controlado
         # a los cinco anos lo hara el aplicativo, que es el unico que sabe si
         # hay una reclamacion abierta.
-        - Id: historico-a-los-dos-anos
-          Status: Enabled
-          Transitions:
-            - { StorageClass: STANDARD_IA, TransitionInDays: 730 }
+        Rules:
+          - Id: historico-a-los-dos-anos
+            Status: Enabled
+            Transitions:
+              - { StorageClass: STANDARD_IA, TransitionInDays: 730 }
       Tags: [{ Key: Name, Value: !Sub '${Proyecto}-evidencias' }]
 
   BucketWeb:

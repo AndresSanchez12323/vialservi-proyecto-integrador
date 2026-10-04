@@ -48,6 +48,18 @@ uno, qué servicios se usan y cómo arreglar lo que suele fallar.
   alcanzan ECR y SES por el gateway de internet y **no hace falta un NAT
   Gateway**, que costaría más que todo lo demás junto. No quedan expuestas
   porque el grupo de seguridad solo admite tráfico del balanceador.
+- **La base es `db.t3.micro` con PostgreSQL `16.15`.** La clase se escribe
+  completa y la versión también, con su *minor*. Son dos cosas que AWS cambia
+  sin avisar y que solo se descubren al desplegar: `db.t4g.micro` **no se
+  ofrece** para PostgreSQL en `us-east-1` —y el error que devuelve habla de
+  falta de capacidad, no de que la combinación no exista—, y pedir la versión
+  mayor a secas (`'16'`) está retirado. Las dos están cubiertas por la capa
+  gratuita por igual. Antes de cambiarlas, comprobar qué hay:
+
+  ```bash
+  aws rds describe-orderable-db-instance-options --engine postgres     --engine-version 16.15 --region us-east-1     --query 'OrderableDBInstanceOptions[?contains(DBInstanceClass,`micro`)].[DBInstanceClass,StorageType]'
+  ```
+
 - **La base de datos es privada y no tiene acceso público.** Las migraciones las
   aplica el contenedor al arrancar, así que nunca hay que abrirla a internet.
 - **Entre CloudFront y el balanceador el tráfico va sin cifrar** por la red de
@@ -64,7 +76,7 @@ AWS porque los precios cambian y dependen de la región:
 |---|---|
 | ALB | ~16–20 USD (se cobra por hora aunque nadie lo use) |
 | Fargate (1 tarea mínima) | ~8–12 USD |
-| RDS db.t4g.micro | 0 USD el primer año, luego ~12–15 USD |
+| RDS db.t3.micro | 0 USD el primer año, luego ~12–15 USD |
 | S3 + CloudFront + SSM + logs | centavos con este tráfico |
 | **Total** | **~25–35 USD/mes** |
 
@@ -234,6 +246,12 @@ curl https://dXXXXXXXXXXXX.cloudfront.net/api/listo
 | Cambié el SPA y sigo viendo lo viejo | Falta la invalidación. `desplegar-web.sh` ya la hace; esperen 1–2 minutos. |
 | Una recarga en `/expedientes/3` da error | Ya está resuelto con las respuestas de error 403/404 → `index.html`. Si lo ven, la distribución quedó mal creada. |
 | `AlreadyExistsException` al crear | El nombre del bucket ya existe (son globales). Cambien `PROYECTO`. |
+| El script dice «la pila ya existe: se actualiza» y falla pidiendo `JwtSecret` | La pila está en `REVIEW_IN_PROGRESS`: el cascarón que deja un *change set* que no llegó a ejecutarse. `describe-stacks` la reporta, pero no guarda parámetros que reusar. Bórrenla y reintenten. |
+| `ROLLBACK_COMPLETE` y no hay forma de actualizar | Una pila que falló al crearse no se actualiza, solo se borra: `aws cloudformation delete-stack --stack-name vialservi --region us-east-1`. El script ya lo detecta y lo dice. |
+| `ResourceExistenceCheck` falló en la validación previa | Un recurso con `DeletionPolicy: Retain` sobrevivió al borrado de la pila —el bucket de evidencias, normalmente— y choca con el que se quiere crear. Si está vacío, bórrenlo; si tiene evidencias, **no**: cambien `PROYECTO`. |
+| `exec /app/arranque.sh: no such file or directory` | No falta el archivo: falta el intérprete. El `.sh` quedó con finales de línea CRLF y el shebang pide `/bin/sh
+`. Pasa al clonar en Windows con `core.autocrlf=true`. El `.gitattributes` lo previene; si ya ocurrió, reconviertan a LF y reconstruyan. |
+| Subí una imagen nueva con la misma etiqueta y ECS sigue con la vieja | ECS resuelve la etiqueta a un *digest* **una sola vez, al iniciar el despliegue**, y lo fija para todas sus tareas. Sobrescribir la etiqueta no afecta a un despliegue en curso: `aws ecs update-service --force-new-deployment` para que la vuelva a resolver. |
 
 ---
 
