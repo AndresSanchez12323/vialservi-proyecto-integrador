@@ -55,11 +55,39 @@ Parameters:
     Type: String
     Default: ''
     Description: >
-      Direccion verificada en SES para los correos de recuperacion. Si se deja
+      Direccion desde la que salen los correos de recuperacion. Si se deja
       vacia, el API queda en modo consola y los codigos salen en CloudWatch.
+
+  # ── SMTP ──
+  # Es la salida cuando no se puede esperar a que AWS apruebe el acceso a
+  # produccion de SES (unas 24 horas). Con SMTP se envia a CUALQUIER
+  # destinatario de inmediato, verificando solo el remitente. Si SmtpHost tiene
+  # valor, manda SMTP sobre SES.
+  SmtpHost:
+    Type: String
+    Default: ''
+    Description: >
+      Servidor SMTP. Ej: smtp.gmail.com, smtp-relay.brevo.com,
+      smtp.sendgrid.net. Vacio para usar SES.
+  SmtpPuerto:
+    Type: Number
+    Default: 587
+    Description: 587 con STARTTLS (lo habitual) o 465 con TLS directo.
+  SmtpUsuario:
+    Type: String
+    Default: ''
+    Description: Usuario SMTP. En Gmail es la direccion completa.
+  SmtpClave:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: >
+      Contrasena SMTP. En Gmail NO es la del correo: hay que generar una
+      "contrasena de aplicacion" con la verificacion en dos pasos activada.
 
 Conditions:
   ConCorreo: !Not [!Equals [!Ref CorreoRemitente, '']]
+  ConSmtp: !Not [!Equals [!Ref SmtpHost, '']]
 
 Resources:
   # ── Red ────────────────────────────────────────────────────────────────
@@ -237,6 +265,22 @@ Resources:
       Name: !Sub '/${Proyecto}/JWT_SECRET'
       Type: String
       Value: !Ref JwtSecret
+
+  # La clave SMTP va en SSM y se inyecta como "secret" de la tarea, no como
+  # variable de entorno: asi no aparece en la consola ni en
+  # describe-task-definition. Se crea siempre, con un relleno cuando no se usa,
+  # porque un parametro de SSM no admite valor vacio.
+  #
+  # LIMITACION CONOCIDA: CloudFormation no puede crear parametros SecureString,
+  # asi que este queda como String, igual que JWT_SECRET y DATABASE_URL. Lo
+  # protege el permiso de IAM, no el cifrado. Para subir el nivel habria que
+  # pasar a Secrets Manager o crear el parametro a mano y referenciarlo.
+  ParamSmtpClave:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${Proyecto}/SMTP_CLAVE'
+      Type: String
+      Value: !If [ConSmtp, !Ref SmtpClave, 'sin-configurar']
 
   # ── Almacenamiento ─────────────────────────────────────────────────────
   BucketEvidencias:
@@ -427,8 +471,13 @@ Resources:
             - { Name: AWS_REGION, Value: !Ref 'AWS::Region' }
             - { Name: ALMACENAMIENTO_MODO, Value: s3 }
             - { Name: S3_BUCKET_EVIDENCIAS, Value: !Ref BucketEvidencias }
-            - { Name: CORREO_MODO, Value: !If [ConCorreo, ses, consola] }
+            # El orden importa: si hay SMTP configurado, manda SMTP; si no, SES
+            # cuando haya remitente; y si no hay nada, consola.
+            - { Name: CORREO_MODO, Value: !If [ConSmtp, smtp, !If [ConCorreo, ses, consola]] }
             - { Name: CORREO_REMITENTE, Value: !If [ConCorreo, !Ref CorreoRemitente, 'no-responde@vialservi.co'] }
+            - { Name: SMTP_HOST, Value: !Ref SmtpHost }
+            - { Name: SMTP_PUERTO, Value: !Ref SmtpPuerto }
+            - { Name: SMTP_USUARIO, Value: !Ref SmtpUsuario }
             # El SPA comparte origen con el API detras de CloudFront, asi que
             # no hay peticiones de otro origen que permitir.
             - { Name: CORS_ORIGIN, Value: '' }
@@ -437,6 +486,7 @@ Resources:
             # consola ni en `describe-task-definition`.
             - { Name: DATABASE_URL, ValueFrom: !Ref ParamCadenaBase }
             - { Name: JWT_SECRET, ValueFrom: !Ref ParamJwt }
+            - { Name: SMTP_CLAVE, ValueFrom: !Ref ParamSmtpClave }
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -546,6 +596,9 @@ Outputs:
     Value: !Ref BucketEvidencias
   EndpointBase:
     Value: !GetAtt BaseDatos.Endpoint.Address
+  ModoCorreo:
+    Description: Como quedo el envio de correos
+    Value: !If [ConSmtp, smtp, !If [ConCorreo, ses, 'consola (NO envia correos)']]
   Cluster:
     Value: !Ref Cluster
   Servicio:

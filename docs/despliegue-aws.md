@@ -203,7 +203,53 @@ aunque arranquen dos tareas a la vez.
 > arranque el API grita este aviso en el log; búsquenlo con
 > `aws logs tail /ecs/vialservi-api --region us-east-1`.
 
-Para que los correos salgan de verdad hay que hacer **tres** cosas. Las tres,
+### Dos caminos
+
+| | SMTP (Gmail, Brevo, SendGrid…) | Amazon SES |
+|---|---|---|
+| Enviar a cualquier correo | **Ya mismo** | Solo tras salir del sandbox (~24 h) |
+| Verificar el remitente | Sí, una vez | Sí, una vez |
+| Verificar cada destinatario | **No** | Sí, mientras esté en sandbox |
+| Espera de aprobación | Ninguna | ~24 h, y pueden pedir detalles |
+
+**Si la sustentación es pronto, use SMTP.** Cambiar a SES después es una
+variable de entorno, no código.
+
+---
+
+### Opción A · SMTP con Gmail (lo más rápido)
+
+1. En la cuenta de Google: active la **verificación en dos pasos** y genere una
+   **contraseña de aplicación** en <https://myaccount.google.com/apppasswords>.
+   Son 16 caracteres. **No sirve la contraseña normal de la cuenta.**
+2. Vuelva a desplegar y responda lo que pregunta el script:
+   ```
+   Direccion desde la que salen los correos : sucorreo@gmail.com
+   Servidor SMTP                            : smtp.gmail.com
+   Puerto                                   : 587
+   Usuario SMTP                             : sucorreo@gmail.com
+   Contrasena SMTP                          : (la de aplicación, no se muestra)
+   ```
+   ```bash
+   ./infra/crear-infraestructura.sh
+   ```
+3. Al final imprime `Correo  smtp`. Listo: envía a cualquier dirección
+   registrada en la base.
+
+Límite de Gmail: del orden de 500 correos al día, de sobra para esto. Brevo o
+SendGrid funcionan igual cambiando `SmtpHost`; sirven si quieren que el remitente
+no sea un Gmail personal.
+
+Errores que da si algo quedó mal, en CloudWatch:
+- `Invalid login` → se puso la contraseña de la cuenta en vez de la de aplicación.
+- Tiempo de espera agotado → el puerto y el modo TLS no concuerdan. Use 587, o
+  465 con `SMTP_SEGURO=true`.
+
+---
+
+### Opción B · Amazon SES
+
+Para que los correos salgan por SES hay que hacer **tres** cosas. Las tres,
 no una:
 
 **1. Verificar el remitente en SES.**
@@ -251,8 +297,23 @@ aws ecs describe-task-definition --task-definition vialservi-api --region us-eas
   --query "taskDefinition.containerDefinitions[0].environment[?name=='CORREO_MODO']"
 ```
 
-Si devuelve `consola`, los correos no salen. Si devuelve `ses`, salen y los
-rechazos de SES quedan en CloudWatch con el motivo.
+Si devuelve `consola`, los correos no salen. Con `ses` o `smtp` salen, y los
+rechazos del proveedor quedan en CloudWatch con el motivo.
+
+### Cómo se ve el correo
+
+La plantilla está en `apps/api/src/plantillas.ts`, aparte del transporte, así que
+el mensaje se ve igual por SMTP, por SES o impreso en consola. Se maqueta con
+tablas y estilos en línea porque los clientes de correo no son navegadores:
+Outlook renderiza con el motor de Word y Gmail descarta buena parte del CSS que
+no vaya en línea.
+
+El logo es **tipográfico y no una imagen** a propósito: la mayoría de los
+clientes bloquean las imágenes hasta que el usuario las autoriza, y las
+incrustadas en base64 Gmail las descarta. Un logo que no carga deja un recuadro
+roto en lo primero que se ve. Si quieren una imagen de verdad, pongan
+`CORREO_LOGO_URL` apuntando a un archivo público —por ejemplo uno subido al
+bucket del SPA— y aparece arriba, con el texto como alternativa.
 
 ---
 
@@ -283,7 +344,9 @@ curl https://dXXXXXXXXXXXX.cloudfront.net/api/listo
 | `/api/listo` responde 503 | El API está vivo pero no llega a RDS. Revisen que `SgBaseDatos` admita a `SgApi`. |
 | 502 o 504 desde CloudFront | El balanceador no tiene destinos sanos. Vean el *target group* en la consola de EC2. |
 | El login responde 401 con la clave correcta | La base está vacía: falta cargar los datos de demostración (sección 3). |
-| Pedí la recuperación y no llegó ningún correo | `CORREO_MODO=consola` (lo más común), o SES sin remitente verificado, o el usuario tiene un correo ficticio del seed. Las tres se resuelven en la sección 5. |
+| Pedí la recuperación y no llegó ningún correo | `CORREO_MODO=consola` (lo más común), o SES sin remitente verificado, o el usuario tiene un correo ficticio del seed. Sección 5. |
+| `Invalid login` con SMTP y Gmail | Se usó la contraseña de la cuenta. Hace falta una **contraseña de aplicación**. Sección 5, opción A. |
+| SMTP se queda esperando y agota el tiempo | El puerto y el modo TLS no concuerdan: 587 con STARTTLS, o 465 con `SMTP_SEGURO=true`. |
 | Cambié el SPA y sigo viendo lo viejo | Falta la invalidación. `desplegar-web.sh` ya la hace; esperen 1–2 minutos. |
 | Una recarga en `/expedientes/3` da error | Ya está resuelto con las respuestas de error 403/404 → `index.html`. Si lo ven, la distribución quedó mal creada. |
 | `AlreadyExistsException` al crear | El nombre del bucket ya existe (son globales). Cambien `PROYECTO`. |
