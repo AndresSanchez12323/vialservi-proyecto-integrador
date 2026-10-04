@@ -5,6 +5,7 @@ import { prisma } from '../prisma.js';
 import { autenticar, exigirRol } from '../auth.js';
 import { recalcularEstado } from '../estado.js';
 import { evidenciasRequeridas, faltantes, formatoDe } from '../formatos.js';
+import { almacenamientoActivo, urlDeLectura, urlDeSubida } from '../almacenamiento.js';
 import {
   avisar,
   usuarioDelCliente,
@@ -324,6 +325,94 @@ rutasExpedientes.post('/:id/evidencias', async (req, res) => {
   }
 
   res.status(201).json(creada);
+});
+
+/**
+ * Paso 1 de la subida: pedir una URL prefirmada.
+ *
+ * El navegador sube el archivo DIRECTO a S3 con esa URL y despues registra la
+ * evidencia con POST /evidencias usando la clave que aqui se devuelve. Son dos
+ * pasos a proposito:
+ *
+ *   - los bytes no pasan por el API, asi que un clip de 15 MB no ocupa el
+ *     servidor ni obliga a subir el limite de express.json;
+ *   - para el trabajo sin senal (etapa 2) el buzon del dispositivo puede
+ *     reintentar el PUT cuantas veces haga falta sin tocar la base de datos, y
+ *     como la clave se deriva del idLocal, reintentar sobreescribe el mismo
+ *     objeto en vez de dejar copias huerfanas.
+ *
+ * En modo local no hay bucket: devuelve la clave y url en null, y el flujo
+ * sigue funcionando registrando solo la referencia, como hasta ahora.
+ */
+rutasExpedientes.post('/:id/evidencias/url-subida', async (req, res) => {
+  const datos = z
+    .object({
+      idLocal: z.string().min(6),
+      tipo: z.enum(['FOTO', 'VIDEO']),
+      categoria: z
+        .enum(['GENERAL', 'RECEPCION', 'ENTREGA', 'DANO', 'FIRMA_CEDULA', 'DOCUMENTO'])
+        .default('GENERAL'),
+    })
+    .safeParse(req.body);
+  if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
+
+  const exp = await prisma.expediente.findUnique({
+    where: { id: Number(req.params.id) },
+    include: {
+      servicio: { select: { clienteId: true, tecnicoId: true, vehiculo: { select: { placa: true } } } },
+    },
+  });
+  if (!exp) return res.status(404).json({ error: 'Expediente no encontrado' });
+  if (!(await puedeVer(req.sesion!, exp.servicio))) {
+    return res.status(403).json({ error: 'No tiene permiso para esta accion' });
+  }
+
+  // Mismas reglas de categoria que al registrar: si no, se podria pedir una URL
+  // para la firma de autorizacion desde la sesion del cliente y subir el
+  // archivo, aunque despues el registro quedara rechazado.
+  const rol = req.sesion!.rol;
+  if (SOLO_TECNICO.includes(datos.data.categoria) && rol !== 'TECNICO' && rol !== 'ADMINISTRADOR') {
+    return res.status(403).json({
+      error: 'Esa clase de evidencia solo la puede aportar el tecnico que atiende el servicio',
+    });
+  }
+
+  res.json(
+    await urlDeSubida({
+      expedienteId: exp.id,
+      placa: exp.servicio.vehiculo.placa,
+      categoria: datos.data.categoria,
+      tipo: datos.data.tipo,
+      idLocal: datos.data.idLocal,
+    }),
+  );
+});
+
+/**
+ * URL de lectura de una evidencia. El bucket es privado: una foto de cedula con
+ * firma no puede quedar accesible con solo adivinar la direccion, asi que se
+ * entrega una URL que caduca en minutos.
+ */
+rutasExpedientes.get('/:id/evidencias/:evidenciaId/url', async (req, res) => {
+  const exp = await prisma.expediente.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { servicio: { select: { clienteId: true, tecnicoId: true } } },
+  });
+  if (!exp) return res.status(404).json({ error: 'Expediente no encontrado' });
+  if (!(await puedeVer(req.sesion!, exp.servicio))) {
+    return res.status(403).json({ error: 'No tiene permiso para esta accion' });
+  }
+
+  const evidencia = await prisma.evidencia.findFirst({
+    where: { id: Number(req.params.evidenciaId), expedienteId: exp.id },
+  });
+  if (!evidencia) return res.status(404).json({ error: 'Evidencia no encontrada' });
+
+  res.json({
+    url: await urlDeLectura(evidencia.archivo),
+    clave: evidencia.archivo,
+    modo: almacenamientoActivo() ? 's3' : 'local',
+  });
 });
 
 rutasExpedientes.post('/:id/novedades', exigirRol('TECNICO', 'CENTRAL', 'ADMINISTRADOR'), async (req, res) => {

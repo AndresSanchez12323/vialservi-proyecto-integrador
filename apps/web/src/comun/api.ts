@@ -27,8 +27,24 @@ export const sesion = {
   },
 };
 
+/**
+ * Base del API.
+ *
+ * Vacia por omision, y eso es lo deseable: las peticiones salen como /api/...
+ * relativas. En desarrollo las atiende el proxy de Vite y en produccion
+ * CloudFront, que sirve el SPA y enruta /api/* al API. Al compartir origen no
+ * hay CORS, no hay contenido mixto y el service worker de la PWA (etapa 2)
+ * podra cachear del mismo origen.
+ *
+ * Solo se define VITE_API_URL si el API queda en otro dominio.
+ */
+const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+
+/** Arma la direccion final de una ruta del API. */
+export const url = (ruta: string) => `${BASE}/api${ruta}`;
+
 export async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
-  const respuesta = await fetch(`/api${ruta}`, {
+  const respuesta = await fetch(url(ruta), {
     ...opciones,
     headers: {
       'Content-Type': 'application/json',
@@ -53,7 +69,7 @@ export const enviar = <T>(ruta: string, metodo: string, cuerpo?: unknown) =>
 
 /** Peticion sin sesion, para registro y recuperacion de clave. */
 export const publico = async <T>(ruta: string, cuerpo: unknown): Promise<T> => {
-  const respuesta = await fetch(`/api${ruta}`, {
+  const respuesta = await fetch(url(ruta), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo),
