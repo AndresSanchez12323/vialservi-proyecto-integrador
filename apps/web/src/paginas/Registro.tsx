@@ -69,7 +69,7 @@ export function Registro() {
         </p>
 
         <form onSubmit={registrar} className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm text-slate-300">Documento</label>
               <input
@@ -112,7 +112,7 @@ export function Registro() {
             </p>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm text-slate-300">Contraseña</label>
               <input type="password" value={form.clave} onChange={cambiar('clave')} className="campo" />

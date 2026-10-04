@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { sesion } from './api';
 import { Atras } from './Atras';
+import { Logo } from './Logo';
 import { Notificaciones } from './Notificaciones';
 import { ROLES } from './formato';
 
@@ -40,9 +41,9 @@ export function Disposicion() {
           desplegable de notificaciones en su capa y las tarjetas del contenido,
           que van despues en el DOM, se pintan encima. */}
       <header className="vidrio relative z-30 mb-6 flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">VialServi</h1>
-          <p className="text-xs text-slate-300">
+        <div className="min-w-0">
+          <Logo className="h-8" />
+          <p className="mt-1 text-xs text-slate-300">
             Gestión de expedientes de servicios mecánicos, de cerrajería, de grúa y de
             conductor elegido
           </p>

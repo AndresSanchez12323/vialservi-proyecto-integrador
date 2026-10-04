@@ -92,7 +92,7 @@ function Verificacion({
       {esPropietario === false && (
         <div className="mt-4 space-y-3 rounded-xl border border-amber-300/30 bg-amber-400/[0.07] p-4">
           <p className="text-sm font-medium text-amber-200">Datos de quien entrega</p>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="campo" placeholder="Nombre completo" />
             <input value={documento} onChange={(e) => setDocumento(e.target.value)} className="campo font-mono" placeholder="Número de cédula" />
           </div>
@@ -130,7 +130,7 @@ function Verificacion({
           Tómelos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo
           vacío: no lo complete con supuestos.
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {([
             ['linea', 'Línea'],
             ['clase', 'Clase de vehículo'],
@@ -274,7 +274,7 @@ export function ExpedienteDetalle() {
         </div>
 
         {/* El expediente concentra y enlaza: no duplica los datos */}
-        <div className="mt-5 grid gap-4 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-5 grid grid-cols-1 gap-4 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <p className="text-xs uppercase text-slate-500">Vehículo</p>
             <p className="font-mono text-amber-300">{s.vehiculo.placa}</p>
@@ -381,7 +381,7 @@ export function ExpedienteDetalle() {
         </section>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="vidrio p-6">
           <h3 className="mb-1 font-medium">Observaciones del técnico</h3>
           <p className="mb-3 text-xs text-slate-500">
@@ -462,7 +462,7 @@ export function ExpedienteDetalle() {
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data.evidencias.map((ev) => (
             <VistaEvidencia key={ev.id} evidencia={ev} expedienteId={data.id} />
           ))}

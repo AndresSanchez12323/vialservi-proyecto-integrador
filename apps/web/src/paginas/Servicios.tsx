@@ -493,7 +493,7 @@ function Solicitar({ alTerminar }: { alTerminar: () => void }) {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {esCentral && (
           <select
             value={clienteId}
@@ -842,7 +842,7 @@ export function Servicios() {
             {esCliente && <div className="mt-4"><Avance estado={s.estado} /></div>}
 
             {!esCliente && (
-              <div className="mt-4 grid gap-2 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
+              <div className="mt-4 grid grid-cols-1 gap-2 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
                 <p><span className="text-slate-400">Cliente:</span> {s.cliente.nombre}</p>
                 <p><span className="text-slate-400">Contacto:</span> {s.contactoTelefono ?? s.cliente.telefono}</p>
                 <p><span className="text-slate-400">Técnico:</span> {s.tecnico?.nombre ?? 'sin asignar'}</p>

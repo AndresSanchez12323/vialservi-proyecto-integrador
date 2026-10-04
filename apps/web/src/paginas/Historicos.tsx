@@ -165,7 +165,7 @@ export function Historicos() {
 
             <p className="text-sm">{s.descripcion}</p>
 
-            <div className="grid gap-3 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
               <div>
                 <p className="text-xs uppercase text-slate-500">Cliente</p>
                 <p>{s.cliente.nombre}</p>

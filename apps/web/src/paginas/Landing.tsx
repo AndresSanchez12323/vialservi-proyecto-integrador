@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sesion } from '../comun/api';
 import { inicioPorRol } from '../comun/Atras';
+import { Logo } from '../comun/Logo';
+// Foto de la tarjeta del héroe: grúa de plataforma cargando un vehículo.
+// Dominio público (PD-self, Jelson25, 2006) vía Wikimedia Commons:
+// https://commons.wikimedia.org/wiki/File:Flat_Bed_Tow_Truck.jpg
+// Se guarda local para no depender de terceros en tiempo de carga.
+import gruaHero from '../recursos/grua-hero.jpg';
 
 /**
  * Página de presentación pública (/).
@@ -81,7 +87,6 @@ function Carrusel() {
 
   return (
     <div
-      className="relative"
       onMouseEnter={() => setPausado(true)}
       onMouseLeave={() => setPausado(false)}
       aria-roledescription="carrusel"
@@ -112,35 +117,36 @@ function Carrusel() {
         </div>
       </div>
 
-      {/* Flechas */}
-      <button
-        onClick={() => ir(activo - 1)}
-        className="boton-suave absolute left-3 top-1/2 -translate-y-1/2 !px-2.5 !py-2"
-        aria-label="Servicio anterior"
-      >
-        <Icono d="M15 18l-6-6 6-6" className="h-5 w-5" />
-      </button>
-      <button
-        onClick={() => ir(activo + 1)}
-        className="boton-suave absolute right-3 top-1/2 -translate-y-1/2 !px-2.5 !py-2"
-        aria-label="Servicio siguiente"
-      >
-        <Icono d="M9 6l6 6-6 6" className="h-5 w-5" />
-      </button>
-
-      {/* Puntos */}
-      <div className="mt-4 flex justify-center gap-2">
-        {LAMINAS.map((l, i) => (
-          <button
-            key={l.titulo}
-            onClick={() => ir(i)}
-            aria-label={`Ir al servicio ${i + 1}`}
-            aria-current={i === activo}
-            className={`h-2.5 rounded-full transition-all ${
-              i === activo ? 'w-8 bg-amber-400' : 'w-2.5 bg-white/25 hover:bg-white/50'
-            }`}
-          />
-        ))}
+      {/* Controles en una fila bajo la tarjeta: las flechas absolutas a los
+          lados se montaban sobre el titulo en pantallas angostas. */}
+      <div className="mt-4 flex items-center justify-center gap-3">
+        <button
+          onClick={() => ir(activo - 1)}
+          className="boton-suave !px-2.5 !py-2"
+          aria-label="Servicio anterior"
+        >
+          <Icono d="M15 18l-6-6 6-6" className="h-5 w-5" />
+        </button>
+        <div className="flex justify-center gap-2">
+          {LAMINAS.map((l, i) => (
+            <button
+              key={l.titulo}
+              onClick={() => ir(i)}
+              aria-label={`Ir al servicio ${i + 1}`}
+              aria-current={i === activo}
+              className={`h-2.5 rounded-full transition-all ${
+                i === activo ? 'w-8 bg-amber-400' : 'w-2.5 bg-white/25 hover:bg-white/50'
+              }`}
+            />
+          ))}
+        </div>
+        <button
+          onClick={() => ir(activo + 1)}
+          className="boton-suave !px-2.5 !py-2"
+          aria-label="Servicio siguiente"
+        >
+          <Icono d="M9 6l6 6-6 6" className="h-5 w-5" />
+        </button>
       </div>
     </div>
   );
@@ -170,7 +176,6 @@ const Paso = ({ n, titulo, texto }: { n: number; titulo: string; texto: string }
 export function Landing() {
   const haySesion = !!sesion.actual();
   const [compacto, setCompacto] = useState(false);
-  const cima = useRef<HTMLElement>(null);
 
   // La barra se vuelve opaca al bajar, para que los enlaces no se pierdan sobre
   // una sección clara.
@@ -182,7 +187,7 @@ export function Landing() {
   }, []);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-clip">
       {/* ── Barra superior ── */}
       <header
         className={`sticky top-0 z-30 transition-colors ${
@@ -190,11 +195,8 @@ export function Landing() {
         }`}
       >
         <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 lg:px-6">
-          <a href="#inicio" className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-400 font-bold text-slate-900">
-              V
-            </span>
-            <span className="text-lg font-semibold tracking-tight">VialServi</span>
+          <a href="#inicio" className="flex shrink-0 items-center" aria-label="VialServi: inicio">
+            <Logo />
           </a>
 
           <div className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
@@ -209,7 +211,7 @@ export function Landing() {
             ) : (
               <>
                 <Link to="/login" className="boton-suave hidden sm:inline-flex">Iniciar sesión</Link>
-                <Link to="/registro" className="boton">Crear cuenta</Link>
+                <Link to="/registro" className="boton shrink-0 px-3 py-1.5 text-sm sm:px-4 sm:py-2 sm:text-base">Crear cuenta</Link>
               </>
             )}
           </div>
@@ -217,9 +219,15 @@ export function Landing() {
       </header>
 
       {/* ── Héroe ── */}
-      <section ref={cima} id="inicio" className="mx-auto max-w-6xl px-4 pt-14 pb-20 lg:px-6 lg:pt-20">
-        <div className="grid items-center gap-10 lg:grid-cols-2">
-          <div>
+      <section id="inicio" className="mx-auto max-w-6xl px-4 pt-14 pb-20 lg:px-6 lg:pt-20">
+        {/* grid-cols-1 explicito: con una sola columna implicita, la pista se
+            dimensiona al max-content mas ancho (la cuadrilla de cifras) y
+            estira toda la pagina en movil. */}
+        <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
+          {/* min-w-0: sin esto, en movil la cuadrilla de cifras (3 columnas)
+              impone su ancho minimo a toda la columna y el texto de arriba se
+              corta por el borde derecho. */}
+          <div className="min-w-0">
             <span className="etiqueta border border-sky-300/30 bg-sky-400/10 text-sky-200">
               Asistencia vial · mecánica · grúa · conductor elegido
             </span>
@@ -252,10 +260,10 @@ export function Landing() {
             <dl className="mt-10 grid max-w-md grid-cols-3 gap-4">
               {[
                 ['3', 'tipos de servicio'],
-                ['24h', 'conductor elegido'],
+                ['5', 'años de conservación'],
                 ['1', 'expediente por atención'],
               ].map(([v, t]) => (
-                <div key={t} className="vidrio-suave px-3 py-3 text-center">
+                <div key={t} className="vidrio-suave min-w-0 px-3 py-3 text-center">
                   <dt className="text-2xl font-semibold text-amber-300">{v}</dt>
                   <dd className="mt-0.5 text-[11px] text-slate-400">{t}</dd>
                 </div>
@@ -275,15 +283,15 @@ export function Landing() {
                   En camino
                 </span>
               </div>
-              <div className="mt-4 h-36 overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-sky-500/15 via-slate-800/40 to-amber-500/10">
-                <div className="flex h-full items-center justify-center text-slate-400">
-                  <Icono d={ICONOS.mapa} className="h-12 w-12 opacity-50" />
-                </div>
-              </div>
+              <img
+                src={gruaHero}
+                alt="Grúa de plataforma cargando un vehículo para su traslado al taller"
+                className="mt-4 h-36 w-full rounded-xl border border-white/10 object-cover"
+              />
               <div className="mt-4 flex items-center justify-between text-sm">
                 <div>
                   <p className="text-slate-400">Técnico asignado</p>
-                  <p className="font-medium">Brahian R. · a 2,9 km</p>
+                  <p className="font-medium">Unidad 04 · a 2,9 km</p>
                 </div>
                 <p className="text-2xl font-semibold text-amber-300">~12 min</p>
               </div>
@@ -307,7 +315,7 @@ export function Landing() {
 
       {/* ── Pilares ── */}
       <section className="mx-auto max-w-6xl px-4 py-14 lg:px-6">
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Pilar
             icono={ICONOS.escudo}
             titulo="Evidencias que respaldan"
@@ -347,7 +355,7 @@ export function Landing() {
           <h2 className="text-3xl font-semibold">Cómo funciona</h2>
           <p className="mt-2 text-slate-400">Del pedido al cierre, sin huecos de información.</p>
         </div>
-        <ol className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <ol className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Paso n={1} titulo="El cliente solicita" texto="Registra su vehículo y pide el servicio con su ubicación. No crea el expediente: solo describe lo que pasó." />
           <Paso n={2} titulo="La central asigna" texto="Clasifica el servicio y elige al técnico más cercano y disponible. Ahí nace el expediente." />
           <Paso n={3} titulo="El técnico atiende" texto="Llega al sitio, verifica el vehículo, registra evidencias y novedades, y marca el servicio como terminado." />
@@ -357,39 +365,35 @@ export function Landing() {
 
       {/* ── Nosotros ── */}
       <section id="nosotros" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-14 lg:px-6">
-        <div className="vidrio grid gap-8 p-8 lg:grid-cols-2 lg:p-10">
+        <div className="vidrio grid grid-cols-1 gap-8 p-8 lg:grid-cols-2 lg:p-10">
           <div>
             <h2 className="text-3xl font-semibold">Quiénes somos</h2>
             <p className="mt-4 text-slate-300">
-              VialServi es un aplicativo web para la gestión de expedientes de servicios
-              mecánicos, de cerrajería, de grúa y de conductor elegido. Nace de un problema
-              real: las evidencias de cada atención terminaban dispersas entre WhatsApp,
-              formatos en papel y celulares personales, y recuperarlas ante un reclamo era
-              casi imposible.
+              VialServi S.A.S es una empresa de asistencia vial. Atendemos varadas
+              y emergencias en la vía con tres servicios: carro taller para
+              mecánica y cerrajería en el sitio, traslado en grúa y conductor
+              elegido.
             </p>
             <p className="mt-3 text-slate-300">
-              La propuesta es sencilla de enunciar y exigente de cumplir: que cada servicio
-              quede en un expediente único, completo y recuperable, desde que el cliente lo
-              solicita hasta que la central lo cierra.
-            </p>
-            <p className="mt-6 text-sm text-slate-400">
-              Proyecto Integrador 2026 · Politécnico Colombiano Jaime Isaza Cadavid<br />
-              Edwin Andrés Sánchez Orozco · Brahian Estiven Rendón Murillo · Juan Pablo Vásquez Marín
+              Nuestro compromiso es doble: llegar rápido y dejar constancia. Cada
+              atención queda en un expediente único con el vehículo, las personas,
+              las evidencias y los responsables, para responder por el servicio
+              con registros, no con memoria.
             </p>
           </div>
-          <div className="grid content-start gap-4">
+          <div className="grid grid-cols-1 content-start gap-4">
             <div className="vidrio-suave p-5">
-              <h3 className="font-medium text-amber-200">Nuestro propósito</h3>
+              <h3 className="font-medium text-amber-200">Atención en Medellín</h3>
               <p className="mt-2 text-sm text-slate-300">
-                Que la empresa nunca dependa de la memoria de una persona para responder por
-                un servicio. La evidencia está, con fecha y responsable, o no se cierra.
+                La central recibe la solicitud, ubica el servicio y asigna al
+                técnico disponible más cercano según el tipo de atención.
               </p>
             </div>
             <div className="vidrio-suave p-5">
-              <h3 className="font-medium text-sky-200">Aporte a los ODS</h3>
+              <h3 className="font-medium text-sky-200">Seguimiento en vivo</h3>
               <p className="mt-2 text-sm text-slate-300">
-                Digitaliza un proceso operativo (ODS 9) y reduce el uso de papel y registros
-                sueltos (ODS 12).
+                Desde que se asigna el técnico, el cliente ve en el mapa por
+                dónde va y cuánto falta, hasta que el servicio termina.
               </p>
             </div>
           </div>
@@ -422,8 +426,8 @@ export function Landing() {
       <footer className="border-t border-white/10">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm text-slate-400 sm:flex-row lg:px-6">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-400 text-xs font-bold text-slate-900">V</span>
-            <span>VialServi · {new Date().getFullYear()}</span>
+            <Logo className="h-7" />
+            <span className="text-slate-400">· {new Date().getFullYear()}</span>
           </div>
           <div className="flex gap-5">
             <a href="#servicios" className="hover:text-white">Servicios</a>

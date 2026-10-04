@@ -127,7 +127,7 @@ export function Tecnicos() {
       {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
       {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="vidrio p-5">
           <p className="text-xs uppercase tracking-wide text-slate-400">Libres ahora</p>
           <p className="mt-1 text-3xl font-semibold text-emerald-300">{libres.length}</p>
@@ -161,7 +161,7 @@ export function Tecnicos() {
             tecnicos={ubicados.map((t) => ({ lat: t.lat!, lng: t.lng!, etiqueta: t.nombre }))}
             alto="20rem"
           />
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {ubicados.map((t) => (
               <li key={t.id} className="vidrio-suave flex items-center justify-between px-3 py-2 text-sm">
                 <span className="truncate">{t.nombre}</span>
@@ -174,7 +174,7 @@ export function Tecnicos() {
         </section>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Columna
           titulo="Libres"
           descripcion="Disponibles y sin nada en curso"

@@ -50,7 +50,7 @@ export function Panel() {
         </p>
       </div>
 
-      <nav className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <nav className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Acceso
           ruta="/servicios"
           nombre="Gestionar servicio"
@@ -63,14 +63,14 @@ export function Panel() {
         <Acceso ruta="/historicos" nombre="Históricos" descripcion="Distribución por categoría" />
       </nav>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Tarjeta titulo="Servicios" valor={totalServicios} detalle="registrados en el sistema" />
         <Tarjeta titulo="Expedientes abiertos" valor={data.abiertos} detalle="pendientes de cierre" />
         <Tarjeta titulo="Expedientes cerrados" valor={data.cerrados} detalle="con evidencia completa" />
         <Tarjeta titulo="Evidencias" valor={data.evidencias} detalle={`${data.novedades} novedades registradas`} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="vidrio p-6">
           <h3 className="mb-1 font-medium">Servicios por estado</h3>
           <p className="mb-4 text-xs text-slate-500">Pulse un estado para gestionarlo.</p>

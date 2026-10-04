@@ -48,7 +48,7 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {esCentral && (
           <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="campo sm:col-span-2">
             <option value="" className="bg-slate-800">Propietario…</option>
@@ -151,7 +151,7 @@ export function Vehiculos() {
             </p>
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <input value={formV.placa} onChange={(e) => setFormV({ ...formV, placa: e.target.value.toUpperCase() })} placeholder="Placa (ej: ABC123)" className="campo font-mono" maxLength={8} />
                 <input value={formV.marca} onChange={(e) => setFormV({ ...formV, marca: e.target.value })} placeholder="Marca" className="campo" />
                 <input value={formV.modelo} onChange={(e) => setFormV({ ...formV, modelo: e.target.value })} placeholder="Línea o modelo" className="campo" />
@@ -206,7 +206,7 @@ export function Vehiculos() {
       {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
       {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.map((v) => (
           <article key={v.id} className="vidrio p-5">
             <p className="font-mono text-lg text-amber-300">{v.placa}</p>

@@ -77,8 +77,8 @@ const pie = (): string => `
   <tr>
     <td style="padding:24px 32px;border-top:1px solid ${BORDE};">
       <div style="font-family:${FUENTE};font-size:12px;color:${SUAVE};line-height:18px;">
-        Este es un mensaje automático de VialServi; no responda a este correo.<br>
-        Proyecto Integrador · Politécnico Colombiano Jaime Isaza Cadavid
+        Este es un mensaje automático de VialServi S.A.S; no responda a este correo.<br>
+        Asistencia vial · mecánica · grúa · conductor elegido
       </div>
     </td>
   </tr>`;
