@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { pedir, sesion, type Sesion } from '../comun/api';
 import { inicioPorRol } from '../comun/Atras';
 
@@ -68,6 +68,15 @@ export function Login() {
             {cargando ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <Link to="/recuperar" className="text-slate-300 underline hover:text-amber-200">
+            Olvidé mi contraseña
+          </Link>
+          <Link to="/registro" className="text-amber-300 underline hover:text-amber-200">
+            Crear cuenta de cliente
+          </Link>
+        </div>
 
         <div className="vidrio-suave mt-8 p-4">
           <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">Usuarios de demostración</p>

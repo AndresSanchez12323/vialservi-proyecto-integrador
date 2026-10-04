@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { sesion } from './api';
 import { Atras } from './Atras';
+import { Notificaciones } from './Notificaciones';
 import { ROLES } from './formato';
 
 /** El menu se arma segun el rol: cada quien ve solo los modulos que le
@@ -45,6 +46,7 @@ export function Disposicion() {
 
         <div className="flex items-center gap-3">
           <Atras />
+          <Notificaciones />
           <div className="text-right">
             <p className="text-sm font-medium">{usuario?.nombre}</p>
             <p className="text-xs text-amber-300">{ROLES[rol] ?? rol}</p>

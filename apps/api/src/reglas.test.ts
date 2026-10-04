@@ -9,6 +9,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
+import bcrypt from 'bcryptjs';
 import { crearApp } from './app.js';
 import { prisma } from './prisma.js';
 import { MAX_VEHICULOS_CLIENTE } from './modulos/vehiculos.js';
@@ -34,6 +35,88 @@ beforeAll(async () => {
 
 const como = (token: string) => (peticion: request.Test) =>
   peticion.set('Authorization', `Bearer ${token}`);
+
+// ── Utilidades de aislamiento ────────────────────────────────────────────
+// La base no se reinicia entre corridas, asi que una prueba que reutilice los
+// datos de demostracion depende de lo que dejaron las anteriores. Las pruebas
+// que ESCRIBEN se crean sus propios datos con estos ayudantes, de modo que el
+// resultado no cambie segun cuantas veces se haya corrido la suite.
+let contador = 0;
+const unico = () => `${Date.now().toString().slice(-7)}${contador++}`;
+const placaNueva = () => `T${unico()}`.slice(0, 8).toUpperCase();
+
+const clienteNuevo = () =>
+  prisma.cliente.create({
+    data: { documento: `D${unico()}`, nombre: 'Cliente de prueba', telefono: '3000000000' },
+  });
+
+const vehiculoNuevo = (clienteId: number) =>
+  prisma.vehiculo.create({
+    data: { placa: placaNueva(), marca: 'Prueba', modelo: 'Modelo', color: 'Negro', clienteId },
+  });
+
+/** Cliente con cuenta propia, para medir reglas de su sesion sin tocar el de
+ *  demostracion (por ejemplo el tope de vehiculos). */
+const clienteConCuenta = async () => {
+  const documento = `D${unico()}`;
+  const usuario = await prisma.usuario.create({
+    data: {
+      documento,
+      nombre: 'Cliente con cuenta',
+      correo: `${documento}@prueba.co`,
+      clave: await bcrypt.hash('VialServi2026', 10),
+      rol: 'CLIENTE',
+    },
+  });
+  const ficha = await prisma.cliente.create({
+    data: { documento, nombre: 'Cliente con cuenta', telefono: '3000000000', usuarioId: usuario.id },
+  });
+  return { ficha, token: await entrar(documento) };
+};
+
+/** Servicio ya terminado por el tecnico, con su expediente, listo para cerrar. */
+const servicioTerminado = async (opciones: { conEvidencia?: boolean } = {}) => {
+  const c = await clienteNuevo();
+  const v = await vehiculoNuevo(c.id);
+  const t = await prisma.tecnico.findFirstOrThrow({ where: { documento: '3001' } });
+  const ahora = new Date();
+
+  const servicio = await prisma.servicio.create({
+    data: {
+      estado: 'TERMINADO',
+      tipo: 'CARRO_TALLER',
+      direccion: 'Direccion de prueba 123',
+      descripcion: 'Caso de prueba',
+      clienteId: c.id,
+      vehiculoId: v.id,
+      tecnicoId: t.id,
+      asignadoEn: ahora,
+      iniciadoEn: ahora,
+      terminadoEn: ahora,
+    },
+  });
+  const expediente = await prisma.expediente.create({
+    data: {
+      consecutivo: `EXP-TEST-${unico()}`,
+      servicioId: servicio.id,
+      formatoTipo: 'CARRO_TALLER',
+      formatoVersion: 1,
+      esPropietario: true,
+      verificadoEn: ahora,
+      verificacionVersion: 1,
+    },
+  });
+
+  if (opciones.conEvidencia) {
+    await prisma.evidencia.createMany({
+      data: [
+        { idLocal: `ev-r-${unico()}`, tipo: 'FOTO', categoria: 'RECEPCION', archivo: 'evidencias/r.jpg', subidaPorId: 1, expedienteId: expediente.id },
+        { idLocal: `ev-e-${unico()}`, tipo: 'FOTO', categoria: 'ENTREGA', archivo: 'evidencias/e.jpg', subidaPorId: 1, expedienteId: expediente.id },
+      ],
+    });
+  }
+  return { servicio, expediente };
+};
 
 describe('A. Acceso', () => {
   it('A1 · sin token no se entra a ningun modulo', async () => {
@@ -96,17 +179,10 @@ describe('E. El cierre es exclusivo de la central', () => {
   });
 
   it('E5 · no se cierra un expediente sin evidencias', async () => {
-    const servicio = await prisma.servicio.create({
-      data: {
-        estado: 'TERMINADO', direccion: 'Prueba sin evidencias', descripcion: 'Caso de prueba',
-        clienteId: (await prisma.cliente.findFirstOrThrow()).id,
-        vehiculoId: (await prisma.vehiculo.findFirstOrThrow()).id,
-      },
-    });
-    const exp = await prisma.expediente.create({
-      data: { consecutivo: `EXP-TEST-${Date.now()}`, servicioId: servicio.id },
-    });
-    const r = await como(central)(request(app).post(`/api/expedientes/${exp.id}/cerrar`));
+    // El servicio ya esta terminado y verificado: lo unico que falta es la
+    // evidencia, para que el mensaje de error sea el de evidencias y no otro.
+    const { expediente } = await servicioTerminado();
+    const r = await como(central)(request(app).post(`/api/expedientes/${expediente.id}/cerrar`));
     expect(r.status).toBe(409);
     expect(r.body.error).toMatch(/evidencias/i);
   });
@@ -159,7 +235,11 @@ describe('Trabajo sin senal: reintentos y orden', () => {
   });
 
   it('una actualizacion vieja que llega tarde no pisa el texto nuevo', async () => {
-    const exp = await prisma.expediente.findFirstOrThrow({ where: { cerradoEn: null } });
+    // Tiene que ser un expediente de ESTE tecnico: desde que el servidor
+    // comprueba que el expediente le pertenece, el de otro responde 403 y la
+    // prueba no mediria el contador de version sino el permiso.
+    const { expediente } = await servicioTerminado();
+    const exp = await prisma.expediente.findUniqueOrThrow({ where: { id: expediente.id } });
     const base = exp.observacionesVersion;
 
     await como(tecnico)(request(app).patch(`/api/expedientes/${exp.id}/observaciones`)
@@ -209,7 +289,9 @@ describe('H. Cancelacion', () => {
 describe('B. La solicitud del servicio', () => {
   it('B1 · el cliente solicita y el servicio queda a su nombre', async () => {
     const yo = await prisma.cliente.findUniqueOrThrow({ where: { documento: '71234567' } });
-    const mio = await prisma.vehiculo.findFirstOrThrow({ where: { clienteId: yo.id } });
+    // Vehiculo recien creado: uno ya usado podria tener un servicio abierto de
+    // otra prueba, y entonces el rechazo seria por duplicado y no por dueno.
+    const mio = await vehiculoNuevo(yo.id);
     const otro = await prisma.cliente.findFirstOrThrow({ where: { documento: { not: '71234567' } } });
 
     // se manda a proposito el id de OTRO cliente: el servidor debe ignorarlo
@@ -257,28 +339,29 @@ describe('B. La solicitud del servicio', () => {
     expect(r.body.every((v: { cliente: { id: number } }) => v.cliente.id === yo.id)).toBe(true);
   });
 
-  it('B6 · el cliente registra sus vehiculos hasta el tope, y el siguiente se rechaza', async () => {
-    const yo = await prisma.cliente.findUniqueOrThrow({ where: { documento: '71234567' } });
-    const otro = await prisma.cliente.findFirstOrThrow({ where: { documento: { not: '71234567' } } });
-    const placaNueva = () => `TS${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    const cuantos = () => prisma.vehiculo.count({ where: { clienteId: yo.id } });
+  it(`B6 · el cliente registra hasta ${MAX_VEHICULOS_CLIENTE} vehiculos y el siguiente se rechaza`, async () => {
+    // Cuenta propia y recien creada: el tope se mide desde cero y no depende
+    // de cuantos vehiculos haya dejado una corrida anterior.
+    const { ficha, token } = await clienteConCuenta();
+    const otro = await prisma.cliente.findFirstOrThrow({ where: { id: { not: ficha.id } } });
+    const cuantos = () => prisma.vehiculo.count({ where: { clienteId: ficha.id } });
 
-    // la corrida anterior pudo dejar vehiculos: se registra solo lo que falte
-    let registrado = await prisma.vehiculo.findFirstOrThrow({ where: { clienteId: yo.id } });
-    while ((await cuantos()) < MAX_VEHICULOS_CLIENTE) {
-      // otra vez se manda el id de OTRO dueño: el servidor debe ignorarlo
-      const r = await como(cliente)(
+    let registrado: { id: number } | null = null;
+    for (let i = 0; i < MAX_VEHICULOS_CLIENTE; i++) {
+      // se manda a proposito el id de OTRO dueño: el servidor debe ignorarlo
+      const r = await como(token)(
         request(app).post('/api/vehiculos').send({
           placa: placaNueva(), marca: 'Renault', modelo: 'Sandero', color: 'Blanco', clienteId: otro.id,
         }),
       );
       expect(r.status).toBe(201);
-      expect(r.body.clienteId).toBe(yo.id);
+      expect(r.body.clienteId).toBe(ficha.id);
       registrado = r.body;
     }
+    expect(await cuantos()).toBe(MAX_VEHICULOS_CLIENTE);
 
     // con el tope alcanzado, el siguiente no entra
-    const extra = await como(cliente)(
+    const extra = await como(token)(
       request(app).post('/api/vehiculos').send({
         placa: placaNueva(), marca: 'Renault', modelo: 'Logan', color: 'Gris',
       }),
@@ -287,14 +370,14 @@ describe('B. La solicitud del servicio', () => {
     expect(await cuantos()).toBe(MAX_VEHICULOS_CLIENTE);
 
     // y los que ya tiene sirven para pedir un servicio
-    const s = await como(cliente)(
+    const s = await como(token)(
       request(app).post('/api/servicios').send({
-        vehiculoId: registrado.id, direccion: 'Avenida 33 con la 65',
+        vehiculoId: registrado!.id, direccion: 'Avenida 33 con la 65',
         descripcion: 'Se varo el carro recien registrado',
       }),
     );
     expect(s.status).toBe(201);
-    expect(s.body.vehiculo.id).toBe(registrado.id);
+    expect(s.body.vehiculo.id).toBe(registrado!.id);
   });
 
   it('B7 · no se registran dos vehiculos con la misma placa', async () => {
