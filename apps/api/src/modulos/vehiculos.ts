@@ -5,18 +5,38 @@ import { autenticar, exigirRol } from '../auth.js';
 
 // La placa es el identificador natural del vehiculo y con ella se consulta
 // el historial, por eso se guarda siempre en mayusculas y sin espacios.
+// Lo que el cliente sabe de memoria. Los identificadores de la licencia de
+// transito (VIN, chasis, motor) NO se piden aqui a proposito: los toma el
+// tecnico en sitio con la tarjeta de propiedad en la mano, al verificar el
+// expediente. Pedirlos al registrar solo lograria que el cliente los dejara
+// vacios o los inventara.
 const vehiculo = z.object({
   placa: z.string().min(5).max(8).transform((p) => p.toUpperCase().replace(/\s/g, '')),
   marca: z.string().min(2),
   modelo: z.string().min(2),
   color: z.string().min(3),
+  linea: z.string().optional(),
+  clase: z.string().optional(),
   // opcional: cuando lo registra el propio cliente se toma de su sesion.
   clienteId: z.coerce.number().int().positive().optional(),
 });
 
+// Datos del documento del vehiculo: los completa el tecnico al verificar o la
+// central por telefono, nunca el cliente al registrarse.
+const documentos = z.object({
+  linea: z.string().optional(),
+  clase: z.string().optional(),
+  licenciaTransito: z.string().optional(),
+  vin: z.string().optional(),
+  chasis: z.string().optional(),
+  motor: z.string().optional(),
+  propietarioNombre: z.string().optional(),
+  propietarioDocumento: z.string().optional(),
+});
+
 // Tope de vehiculos que un cliente puede registrar por su cuenta. Si necesita
 // mas, lo registra la central. Cambiar aqui el valor ajusta la regla.
-export const MAX_VEHICULOS_CLIENTE = 3;
+export const MAX_VEHICULOS_CLIENTE = 5;
 
 const objeto = z.object({
   descripcion: z.string().min(3),
@@ -110,6 +130,19 @@ rutasVehiculos.post('/', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async
     include: { cliente: { select: { id: true, nombre: true, documento: true } } },
   });
   res.status(201).json(creado);
+});
+
+/** La central completa los datos de la licencia de transito. */
+rutasVehiculos.put('/:id/documentos', exigirRol('ADMINISTRADOR', 'CENTRAL'), async (req, res) => {
+  const datos = documentos.safeParse(req.body);
+  if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
+
+  const existe = await prisma.vehiculo.findUnique({ where: { id: Number(req.params.id) } });
+  if (!existe) return res.status(404).json({ error: 'Vehiculo no encontrado' });
+
+  res.json(
+    await prisma.vehiculo.update({ where: { id: existe.id }, data: datos.data }),
+  );
 });
 
 // Inventario de objetos del vehiculo: es la evidencia de lo que habia dentro

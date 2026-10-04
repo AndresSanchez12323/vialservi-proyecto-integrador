@@ -4,6 +4,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Disposicion } from './comun/Disposicion';
 import { Login } from './paginas/Login';
+import { Registro } from './paginas/Registro';
+import { RecuperarClave } from './paginas/RecuperarClave';
 import { Panel } from './paginas/Panel';
 import { Servicios } from './paginas/Servicios';
 import { ExpedienteDetalle } from './paginas/ExpedienteDetalle';
@@ -33,6 +35,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/registro" element={<Registro />} />
+          <Route path="/recuperar" element={<RecuperarClave />} />
           <Route
             element={
               <Privado>

@@ -1,0 +1,162 @@
+/**
+ * Mapa con Leaflet sobre OpenStreetMap.
+ *
+ * Por que OSM y no Google o Mapbox: no necesita llave de API, no cobra por
+ * consulta y no obliga a registrar una tarjeta para que el proyecto funcione.
+ * Para lo que aqui se muestra —donde esta el vehiculo, donde va el tecnico y a
+ * que distancia— alcanza de sobra.
+ *
+ * El marcador por defecto de Leaflet carga sus imagenes desde una ruta
+ * relativa que con un empaquetador queda mal, asi que se usan marcadores de
+ * HTML (divIcon) con los mismos estilos de la aplicacion. Ademas se ven mejor
+ * sobre el fondo oscuro.
+ */
+import { useEffect, useMemo } from 'react';
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+export type Punto = { lat: number; lng: number };
+
+/** Marcador redondo con un emoji, sin imagenes externas. */
+const icono = (emoji: string, color: string) =>
+  L.divIcon({
+    className: '',
+    html: `<div style="
+      display:flex;align-items:center;justify-content:center;
+      width:34px;height:34px;border-radius:999px;
+      background:${color};border:2px solid rgba(255,255,255,.85);
+      box-shadow:0 4px 12px rgba(0,0,0,.45);font-size:17px;line-height:1;
+    ">${emoji}</div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  });
+
+const iconoVehiculo = icono('🚘', 'rgba(251,146,60,.95)');
+const iconoTecnico = icono('🔧', 'rgba(56,189,248,.95)');
+
+/** Reencuadra el mapa cuando cambian los puntos que hay que mostrar. */
+function Encuadrar({ puntos }: { puntos: Punto[] }) {
+  const mapa = useMap();
+
+  useEffect(() => {
+    if (puntos.length === 0) return;
+    if (puntos.length === 1) {
+      mapa.setView([puntos[0].lat, puntos[0].lng], 15);
+      return;
+    }
+    mapa.fitBounds(
+      L.latLngBounds(puntos.map((p) => [p.lat, p.lng] as [number, number])),
+      // Sin margen los marcadores quedan pegados al borde y se cortan.
+      { padding: [40, 40], maxZoom: 15 },
+    );
+    // La dependencia es el contenido, no el arreglo: si se usara `puntos` el
+    // efecto correria en cada render porque es un arreglo nuevo cada vez.
+  }, [mapa, JSON.stringify(puntos)]);
+
+  return null;
+}
+
+type Props = {
+  /** Donde esta el vehiculo. */
+  destino?: Punto | null;
+  /** Donde esta el tecnico. */
+  tecnico?: Punto | null;
+  etiquetaDestino?: string;
+  etiquetaTecnico?: string;
+  alto?: string;
+  /** Si se pasa, al pulsar el mapa se elige ese punto. */
+  alElegir?: (p: Punto) => void;
+};
+
+/** Recoge el clic para elegir un punto, cuando el mapa es un selector. */
+function Seleccionar({ alElegir }: { alElegir: (p: Punto) => void }) {
+  const mapa = useMap();
+  useEffect(() => {
+    const manejar = (e: L.LeafletMouseEvent) =>
+      alElegir({ lat: Number(e.latlng.lat.toFixed(6)), lng: Number(e.latlng.lng.toFixed(6)) });
+    mapa.on('click', manejar);
+    return () => {
+      mapa.off('click', manejar);
+    };
+  }, [mapa, alElegir]);
+  return null;
+}
+
+// Centro de Medellin: el encuadre inicial cuando todavia no hay ningun punto.
+const MEDELLIN: Punto = { lat: 6.2442, lng: -75.5812 };
+
+export function Mapa({
+  destino,
+  tecnico,
+  etiquetaDestino = 'Vehículo',
+  etiquetaTecnico = 'Técnico',
+  alto = '18rem',
+  alElegir,
+}: Props) {
+  const puntos = useMemo(
+    () => [destino, tecnico].filter((p): p is Punto => !!p),
+    [destino, tecnico],
+  );
+  const centro = puntos[0] ?? MEDELLIN;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/15" style={{ height: alto }}>
+      <MapContainer
+        center={[centro.lat, centro.lng]}
+        zoom={13}
+        style={{ height: '100%', width: '100%', background: '#0b1220' }}
+        scrollWheelZoom={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
+        {destino && (
+          <Marker position={[destino.lat, destino.lng]} icon={iconoVehiculo}>
+            <Popup>{etiquetaDestino}</Popup>
+          </Marker>
+        )}
+        {tecnico && (
+          <Marker position={[tecnico.lat, tecnico.lng]} icon={iconoTecnico}>
+            <Popup>{etiquetaTecnico}</Popup>
+          </Marker>
+        )}
+
+        {/* La linea recta entre los dos puntos. No es la ruta por calles: se
+            dibuja punteada justamente para no dar a entender que lo es. */}
+        {destino && tecnico && (
+          <Polyline
+            positions={[
+              [tecnico.lat, tecnico.lng],
+              [destino.lat, destino.lng],
+            ]}
+            pathOptions={{ color: '#38bdf8', weight: 3, opacity: 0.7, dashArray: '8 8' }}
+          />
+        )}
+
+        <Encuadrar puntos={puntos} />
+        {alElegir && <Seleccionar alElegir={alElegir} />}
+      </MapContainer>
+    </div>
+  );
+}
+
+/**
+ * Pide la ubicacion del navegador. Devuelve null si el usuario la niega o el
+ * equipo no la tiene: negar el permiso no puede impedir pedir un servicio.
+ */
+export const ubicacionActual = (): Promise<Punto | null> =>
+  new Promise((resolver) => {
+    if (!navigator.geolocation) return resolver(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolver({
+        lat: Number(p.coords.latitude.toFixed(6)),
+        lng: Number(p.coords.longitude.toFixed(6)),
+      }),
+      () => resolver(null),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  });

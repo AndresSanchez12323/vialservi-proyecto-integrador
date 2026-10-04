@@ -8,6 +8,7 @@ import { rutasTecnicos } from './modulos/tecnicos.js';
 import { rutasServicios } from './modulos/servicios.js';
 import { rutasExpedientes } from './modulos/expedientes.js';
 import { rutasReportes } from './modulos/reportes.js';
+import { rutasNotificaciones } from './modulos/notificaciones.js';
 
 export const crearApp = () => {
   const app = express();
@@ -23,6 +24,7 @@ export const crearApp = () => {
   app.use('/api/servicios', rutasServicios);
   app.use('/api/expedientes', rutasExpedientes);
   app.use('/api/reportes', rutasReportes);
+  app.use('/api/notificaciones', rutasNotificaciones);
 
   // Modulo aun no construido: se declara para que la navegacion y el API
   // hablen de lo mismo.

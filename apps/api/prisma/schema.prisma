@@ -2,6 +2,17 @@
 // Sigue el orden logico del mapa de navegacion: el vehiculo es el punto de
 // partida, pertenece a un cliente, el cliente solicita un servicio y de ese
 // servicio nace el expediente, que enlaza (no duplica) a los demas modulos.
+//
+// ── REGLA DE ORO: NINGUNA COLUMNA SE COMPARTE ENTRE ROLES ────────────────
+// El trabajo sin senal (etapa 2) exige que dos roles nunca escriban el mismo
+// campo. Si lo compartieran, una edicion del tecnico que sube tarde pisaria
+// lo que la central ya cambio, y se perderia informacion.
+// Por eso:
+//   - Cada campo tiene UN solo rol que lo escribe, anotado al lado.
+//   - Lo que aportan varios roles (evidencias, novedades) son FILAS propias:
+//     INSERT y nunca UPDATE, de modo que dos personas no pueden pisarse.
+//   - `Servicio.estado` NO lo escribe nadie a mano: se DERIVA de las marcas
+//     de tiempo de cada rol (ver recalcularEstado en src/estado.ts).
 
 generator client {
   provider = "prisma-client-js"
@@ -13,6 +24,8 @@ datasource db {
 }
 
 // ── Seguridad y control de acceso ────────────────────────────────────────
+// Solo hay cuatro roles. El "conductor elegido" no es un rol aparte: es un
+// tecnico cuya hoja de vida incluye la especialidad CONDUCTOR.
 enum Rol {
   ADMINISTRADOR
   CENTRAL
@@ -21,57 +34,90 @@ enum Rol {
 }
 
 model Usuario {
-  id           Int      @id @default(autoincrement())
-  documento    String   @unique
-  nombre       String
-  correo       String   @unique
-  clave        String // hash bcrypt, nunca la clave en claro
-  rol          Rol
-  activo       Boolean  @default(true)
-  creadoEn     DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  documento String   @unique
+  nombre    String
+  correo    String   @unique
+  clave     String // hash bcrypt, nunca la clave en claro
+  rol       Rol
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
 
-  tecnico      Tecnico?
-  cliente      Cliente?
-  evidencias   Evidencia[]
+  tecnico        Tecnico?
+  cliente        Cliente?
+  evidencias     Evidencia[]
+  notificaciones Notificacion[]
+  recuperaciones RecuperacionClave[]
+}
+
+// Recuperacion de clave por codigo de un solo uso.
+// El codigo NO se guarda en claro: se guarda su hash, igual que una clave.
+// Asi un volcado de la base no permite tomar cuentas ajenas.
+model RecuperacionClave {
+  id        Int       @id @default(autoincrement())
+  codigo    String // hash bcrypt del codigo de 6 digitos
+  expiraEn  DateTime
+  usadoEn   DateTime?
+  intentos  Int       @default(0)
+  creadoEn  DateTime  @default(now())
+
+  usuarioId Int
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+
+  @@index([usuarioId])
 }
 
 // ── Modulo: gestionar vehiculo e inventario ──────────────────────────────
+// El cliente registra lo que sabe de memoria (placa, marca, linea, color).
+// Los identificadores de la licencia de transito (tarjeta de propiedad) los
+// completa el TECNICO en sitio, cuando tiene el documento en la mano: pedirle
+// el VIN al cliente por telefono a las 2 a.m. no es realista.
 model Vehiculo {
-  id         Int      @id @default(autoincrement())
-  placa      String   @unique
-  marca      String
-  modelo     String
-  color      String
-  creadoEn   DateTime @default(now())
+  id       Int      @id @default(autoincrement())
+  placa    String   @unique
+  marca    String
+  modelo   String
+  color    String
+  creadoEn DateTime @default(now())
 
-  clienteId  Int
-  cliente    Cliente  @relation(fields: [clienteId], references: [id])
+  // escribe el TECNICO al verificar en sitio (o la central por telefono)
+  linea                String?
+  clase                String? // automovil, campero, camion, motocicleta...
+  licenciaTransito     String? // numero de la tarjeta de propiedad
+  vin                  String?
+  chasis               String?
+  motor                String?
+  propietarioNombre    String? // como figura en la licencia de transito
+  propietarioDocumento String?
+
+  clienteId Int
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
 
   servicios  Servicio[]
   inventario ObjetoInventario[]
 }
 
 model ObjetoInventario {
-  id          Int      @id @default(autoincrement())
-  descripcion String
-  cantidad    Int      @default(1)
+  id           Int      @id @default(autoincrement())
+  descripcion  String
+  cantidad     Int      @default(1)
   registradoEn DateTime @default(now())
 
-  vehiculoId  Int
-  vehiculo    Vehiculo @relation(fields: [vehiculoId], references: [id])
+  vehiculoId Int
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id])
 }
 
 // ── Modulo: gestionar cliente ────────────────────────────────────────────
 model Cliente {
-  id        Int        @id @default(autoincrement())
-  documento String     @unique
+  id        Int      @id @default(autoincrement())
+  documento String   @unique
   nombre    String
   telefono  String
   correo    String?
-  creadoEn  DateTime   @default(now())
+  creadoEn  DateTime @default(now())
 
-  usuarioId Int?       @unique
-  usuario   Usuario?   @relation(fields: [usuarioId], references: [id])
+  usuarioId Int?     @unique
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
 
   vehiculos Vehiculo[]
   servicios Servicio[]
@@ -81,18 +127,24 @@ model Cliente {
 // El tecnico es una entidad propia, no solo un rol: tiene hoja de vida con
 // especialidades y certificaciones que determinan que servicios puede atender.
 model Tecnico {
-  id             Int      @id @default(autoincrement())
-  documento      String   @unique
+  id             Int     @id @default(autoincrement())
+  documento      String  @unique
   nombre         String
   telefono       String
   especialidades String // "MECANICA,CERRAJERIA,GRUA,CONDUCTOR"
   licencia       String? // categoria de licencia de conduccion
-  disponible     Boolean  @default(true)
+  disponible     Boolean @default(true)
 
-  usuarioId      Int?     @unique
-  usuario        Usuario? @relation(fields: [usuarioId], references: [id])
+  // Ubicacion que reporta el propio tecnico. Con ella la central escoge al
+  // mas cercano y el cliente ve el mapa. La escribe solo el TECNICO.
+  lat          Float?
+  lng          Float?
+  ubicacionEn  DateTime?
 
-  servicios      Servicio[]
+  usuarioId Int?     @unique
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  servicios Servicio[]
 }
 
 // ── Modulo: gestionar servicio ───────────────────────────────────────────
@@ -102,72 +154,113 @@ enum TipoServicio {
   CONDUCTOR_ELEGIDO // disponible 24 horas
 }
 
+// Estos valores NO se escriben a mano: los calcula recalcularEstado() a
+// partir de las marcas de tiempo de cada rol. Se guardan para poder filtrar
+// e indicar sin recalcular en cada consulta.
 enum EstadoServicio {
-  SOLICITADO
-  ASIGNADO
-  EN_EJECUCION
-  TERMINADO
-  CERRADO
-  CANCELADO // el cliente desiste o el vehiculo ya no esta en el sitio
+  SOLICITADO // el cliente lo pidio; la central aun lo esta verificando
+  ASIGNADO // la central ya eligio tipo y tecnico
+  EN_EJECUCION // el tecnico llego y empezo
+  TERMINADO // el tecnico acabo; falta que la central cierre
+  CERRADO // la central reviso y cerro el expediente
+  CANCELADO // se desistio, con motivo
+  RECHAZADO // la central no acepta la solicitud, con motivo
 }
 
 model Servicio {
-  id          Int            @id @default(autoincrement())
-  tipo        TipoServicio?  // lo define la central al clasificar
-  // Lo que el cliente cree necesitar al solicitar. La central lo ve al
-  // clasificar como sugerencia, pero decide el tipo definitivo.
-  tipoSolicitado TipoServicio?
-  estado      EstadoServicio @default(SOLICITADO)
-  direccion   String
-  descripcion String
-  solicitadoEn DateTime      @default(now())
+  id     Int            @id @default(autoincrement())
+  estado EstadoServicio @default(SOLICITADO) // DERIVADO, no lo escribe un rol
 
-  // Cancelacion: la registra la central. Un servicio cerrado no se puede
-  // cancelar, y la cancelacion exige motivo para que quede la trazabilidad.
+  // ── lo escribe el CLIENTE al solicitar ──
+  tipoSolicitado   TipoServicio? // lo que cree necesitar; la central confirma
+  direccion        String
+  descripcion      String
+  // Donde esta el vehiculo. El cliente lo marca en el mapa o se toma del
+  // navegador. Con esto se calcula el tecnico mas cercano y el tiempo.
+  lat              Float?
+  lng              Float?
+  contactoTelefono String? // a quien llamar para este servicio
+  solicitadoEn     DateTime      @default(now())
+
+  // ── lo escribe la CENTRAL al clasificar y asignar ──
+  tipo        TipoServicio?
+  asignadoEn  DateTime?
+  asignadoPor Int?
+
+  // ── lo escribe el TECNICO en campo ──
+  iniciadoEn  DateTime?
+  terminadoEn DateTime?
+  // Minutos que el tecnico dice que le falta para llegar. Si no lo informa,
+  // el servidor estima con la distancia (ver estimarMinutos en src/geo.ts).
+  etaMinutos       Int?
+  etaActualizadoEn DateTime?
+
+  // ── cierre de la solicitud por la CENTRAL ──
   canceladoEn       DateTime?
   canceladoPor      Int?
   motivoCancelacion String?
+  rechazadoEn       DateTime?
+  rechazadoPor      Int?
+  motivoRechazo     String?
 
-  clienteId   Int
-  cliente     Cliente        @relation(fields: [clienteId], references: [id])
-  vehiculoId  Int
-  vehiculo    Vehiculo       @relation(fields: [vehiculoId], references: [id])
-  tecnicoId   Int?
-  tecnico     Tecnico?       @relation(fields: [tecnicoId], references: [id])
+  clienteId  Int
+  cliente    Cliente  @relation(fields: [clienteId], references: [id])
+  vehiculoId Int
+  vehiculo   Vehiculo @relation(fields: [vehiculoId], references: [id])
+  tecnicoId  Int?
+  tecnico    Tecnico? @relation(fields: [tecnicoId], references: [id])
 
-  expediente  Expediente?
+  expediente     Expediente?
+  notificaciones Notificacion[]
 }
 
 // ── Modulo: gestionar expediente ─────────────────────────────────────────
-// El expediente esta partido a proposito para que el trabajo sin senal no
-// genere conflictos:
-//   - Lo que el tecnico aporta en campo (evidencias y novedades) son filas
-//     propias, es decir, INSERT y nunca UPDATE: dos personas no pueden pisarse.
-//   - Los campos del expediente estan repartidos por rol. El tecnico escribe
-//     observaciones; la central escribe estado y cierre. Una actualizacion
-//     parcial del tecnico no puede sobrescribir lo de la central.
+// El expediente esta partido por rol a proposito, para que el trabajo sin
+// senal no genere conflictos. Cada bloque dice quien lo escribe.
 model Expediente {
-  id          Int       @id @default(autoincrement())
-  idLocal     String?   @unique // id del dispositivo, si nacio sin senal
-  consecutivo String    @unique
-  abiertoEn   DateTime  @default(now())
+  id          Int      @id @default(autoincrement())
+  idLocal     String?  @unique // id del dispositivo, si nacio sin senal
+  consecutivo String   @unique
+  abiertoEn   DateTime @default(now())
 
-  // campos del tecnico
+  // Version del formato con la que se diligencio. Un cambio posterior del
+  // catalogo no altera lo ya llenado: el expediente conserva su version.
+  formatoTipo    String? // GRUA | CARRO_TALLER | CONDUCTOR_ELEGIDO
+  formatoVersion Int?
+
+  // ── campos del TECNICO ──
   observaciones String?
   // Contador que incrementa el dispositivo en cada edicion. El servidor
   // descarta una actualizacion cuyo contador sea menor o igual al guardado,
   // de modo que un reintento viejo que llega tarde no pisa el texto nuevo.
   observacionesVersion Int @default(0)
 
-  // campos de la central: el tecnico no puede escribirlos
-  cerradoEn   DateTime?
-  cerradoPor  Int?
+  // Verificacion de quien entrega el vehiculo. La hace el TECNICO en sitio,
+  // porque es el unico que ve a la persona y el documento.
+  //   null  = todavia no la hizo
+  //   true  = quien entrega es el propietario
+  //   false = NO es el propietario: exige foto de la cedula con la firma
+  // VialServi no verifica procedencia ni hurto: solo deja constancia de lo
+  // que el tecnico vio. No emite certificacion de propiedad.
+  esPropietario        Boolean?
+  solicitanteNombre    String?
+  solicitanteDocumento String?
+  solicitanteRelacion  String? // familiar, empleado, taller, aseguradora...
+  verificadoEn         DateTime?
+  verificadoPor        Int?
+  verificacionVersion  Int       @default(0)
 
-  servicioId  Int       @unique
-  servicio    Servicio  @relation(fields: [servicioId], references: [id])
+  // ── campos de la CENTRAL: el tecnico no puede escribirlos ──
+  revisionCentral String?
+  cerradoEn       DateTime?
+  cerradoPor      Int?
 
-  evidencias  Evidencia[]
-  novedades   Novedad[]
+  servicioId Int      @unique
+  servicio   Servicio @relation(fields: [servicioId], references: [id])
+
+  evidencias     Evidencia[]
+  novedades      Novedad[]
+  notificaciones Notificacion[]
 }
 
 enum TipoEvidencia {
@@ -175,39 +268,91 @@ enum TipoEvidencia {
   VIDEO // clips de maximo 10 segundos
 }
 
+// Para que una foto sirva como soporte hay que saber QUE prueba. La categoria
+// es lo que permite exigir el juego minimo de cada tipo de servicio y, sobre
+// todo, exigir la firma con cedula cuando quien entrega no es el propietario.
+enum CategoriaEvidencia {
+  GENERAL
+  RECEPCION // estado del vehiculo al recibirlo
+  ENTREGA // estado al entregarlo
+  DANO // detalle de un rayon o golpe
+  FIRMA_CEDULA // cedula con la firma de quien autoriza, si no es propietario
+  DOCUMENTO // licencia de transito u otro soporte
+}
+
 // idLocal lo genera el dispositivo antes de enviar: si la peticion se
 // reintenta, el servidor reconoce el registro y no lo duplica.
 model Evidencia {
-  id           Int           @id @default(autoincrement())
-  idLocal      String        @unique
-  tipo         TipoEvidencia
-  archivo      String // ruta en el almacenamiento de archivos
+  id        Int                @id @default(autoincrement())
+  idLocal   String             @unique
+  tipo      TipoEvidencia
+  categoria CategoriaEvidencia @default(GENERAL)
+  archivo   String // ruta en el almacenamiento de archivos
   // tomadaEn es la hora del dispositivo: con ella se ordena la evidencia en
   // pantalla, sin importar en que orden llegue al servidor.
-  tomadaEn     DateTime      @default(now())
-  registradaEn DateTime      @default(now())
+  tomadaEn     DateTime @default(now())
+  registradaEn DateTime @default(now())
   // Si el expediente ya estaba cerrado cuando llego, no se rechaza: se
   // guarda marcada, porque perder evidencia es peor que tener un registro
   // tardio.
-  posteriorAlCierre Boolean  @default(false)
+  posteriorAlCierre Boolean @default(false)
 
   // Quien la aporto. Es lo que permite distinguir la version del tecnico de
   // la del cliente cuando hay una reclamacion.
-  subidaPorId  Int
-  subidaPor    Usuario       @relation(fields: [subidaPorId], references: [id])
-
-  expedienteId Int
-  expediente   Expediente    @relation(fields: [expedienteId], references: [id])
-}
-
-model Novedad {
-  id           Int        @id @default(autoincrement())
-  idLocal      String     @unique
-  descripcion  String
-  ocurridaEn   DateTime   @default(now())
-  registradaEn DateTime   @default(now())
-  posteriorAlCierre Boolean @default(false)
+  subidaPorId Int
+  subidaPor   Usuario @relation(fields: [subidaPorId], references: [id])
 
   expedienteId Int
   expediente   Expediente @relation(fields: [expedienteId], references: [id])
+
+  @@index([expedienteId])
+}
+
+model Novedad {
+  id                Int      @id @default(autoincrement())
+  idLocal           String   @unique
+  descripcion       String
+  ocurridaEn        DateTime @default(now())
+  registradaEn      DateTime @default(now())
+  posteriorAlCierre Boolean  @default(false)
+
+  expedienteId Int
+  expediente   Expediente @relation(fields: [expedienteId], references: [id])
+
+  @@index([expedienteId])
+}
+
+// ── Notificaciones ───────────────────────────────────────────────────────
+// Una fila por destinatario y por hecho. Son INSERT: nadie edita la
+// notificacion de otro, solo la marca como leida (y eso es su propia fila).
+enum TipoNotificacion {
+  SERVICIO_SOLICITADO // cliente pidio -> avisa a la central
+  SERVICIO_ASIGNADO // central asigno -> avisa al tecnico y al cliente
+  SERVICIO_RECHAZADO
+  SERVICIO_CANCELADO
+  TECNICO_EN_CAMINO // el tecnico informo tiempo de llegada -> cliente
+  SERVICIO_INICIADO // el tecnico llego y empezo -> cliente y central
+  SERVICIO_TERMINADO // el tecnico acabo -> central (debe revisar y cerrar)
+  EXPEDIENTE_CERRADO // la central cerro -> cliente y tecnico
+  EVIDENCIA_CLIENTE // el cliente aporto evidencia -> tecnico y central
+  VERIFICACION_NO_PROPIETARIO // quien entrega no es el dueno -> central
+}
+
+model Notificacion {
+  id       Int              @id @default(autoincrement())
+  tipo     TipoNotificacion
+  titulo   String
+  mensaje  String
+  leidaEn  DateTime?
+  creadaEn DateTime         @default(now())
+
+  usuarioId Int // destinatario
+  usuario   Usuario @relation(fields: [usuarioId], references: [id])
+
+  servicioId   Int?
+  servicio     Servicio?   @relation(fields: [servicioId], references: [id])
+  expedienteId Int?
+  expediente   Expediente? @relation(fields: [expedienteId], references: [id])
+
+  @@index([usuarioId, leidaEn])
 }
