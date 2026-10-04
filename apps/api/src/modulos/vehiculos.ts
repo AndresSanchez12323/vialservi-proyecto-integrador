@@ -52,7 +52,12 @@ rutasVehiculos.use(autenticar);
 rutasVehiculos.get('/', async (req, res) => {
   const placa = String(req.query.placa ?? '').toUpperCase();
   const sesion = req.sesion!;
-  const where: Record<string, unknown> = placa ? { placa: { contains: placa } } : {};
+  // mode: 'insensitive' es obligatorio en PostgreSQL. En SQLite `contains` ya
+  // ignoraba mayusculas, pero Postgres distingue: sin esto, buscar "abc123" no
+  // encontraria la placa "ABC123" y la busqueda se romperia en silencio.
+  const where: Record<string, unknown> = placa
+    ? { placa: { contains: placa, mode: 'insensitive' } }
+    : {};
 
   if (sesion.rol === 'CLIENTE') {
     const c = await prisma.cliente.findUnique({ where: { usuarioId: sesion.id } });

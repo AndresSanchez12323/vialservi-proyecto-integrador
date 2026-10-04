@@ -1,0 +1,17 @@
+// Compilacion para produccion. El tsconfig.json de al lado tiene noEmit y
+// sirve para revisar tipos y para vitest; este si genera JavaScript.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "sourceMap": true,
+    "declaration": false,
+    // NodeNext porque el resultado lo ejecuta Node directamente, no un
+    // empaquetador. El codigo ya importa con extension .js, que es justo lo
+    // que NodeNext exige.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext"
+  },
+  "exclude": ["**/*.test.ts", "dist"]
+}

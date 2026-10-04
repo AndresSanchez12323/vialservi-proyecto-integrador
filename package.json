@@ -14,13 +14,19 @@
     "dev": "concurrently -n API,WEB -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run dev --workspace apps/api",
     "dev:web": "npm run dev --workspace apps/web",
-    "setup": "npm install && npm run env && npm run db:push && npm run db:seed",
+    "setup": "npm install && npm run env && npm run db:deploy && npm run db:seed",
     "env": "node -e \"const f='apps/api/.env';require('fs').existsSync(f)||(require('fs').copyFileSync('apps/api/.env.example',f),console.log('Creado '+f+' desde .env.example'))\"",
     "db:push": "npm run db:push --workspace apps/api",
     "db:seed": "npm run db:seed --workspace apps/api",
     "test": "npm run test --workspace apps/api",
     "build": "npm run build --workspace apps/web",
-    "preview": "npm run preview --workspace apps/web"
+    "preview": "npm run preview --workspace apps/web",
+    "base:arriba": "docker compose up -d",
+    "base:abajo": "docker compose down",
+    "db:migrate": "npm run db:migrate --workspace apps/api",
+    "db:deploy": "npm run db:deploy --workspace apps/api",
+    "build:api": "npm run build --workspace apps/api",
+    "build:web": "npm run build --workspace apps/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

@@ -117,6 +117,32 @@ El catálogo vive en código y no en tabla en esta etapa, para que quede version
 en Git junto con las reglas que lo validan. Cuando la central necesite editarlo
 sin un despliegue, se mueve a tabla conservando estas mismas versiones.
 
+### Subida de evidencias en tres pasos
+
+1. el cliente pide una URL prefirmada a `POST /expedientes/:id/evidencias/url-subida`
+2. hace **`PUT` directo a S3**: los bytes no pasan por el API
+3. registra la evidencia con `POST /expedientes/:id/evidencias` usando la clave
+
+**Por qué separados.** Un clip de diez segundos pesa decenas de megabytes;
+pasarlo por el API obligaría a dimensionar el contenedor para mover archivos. Y
+para el trabajo sin señal es la pieza clave: el paso 2 se puede reintentar sin
+tocar la base de datos, y como **la clave se deriva del `idLocal`**, un reintento
+sobrescribe el mismo objeto en lugar de dejar copias huérfanas en el bucket.
+
+**Los límites se imponen firmando.** La URL se firma con el `Content-Type` y el
+`ContentLength` que declara el cliente, y el servidor valida esos valores contra
+los topes del Alcance (5 MB por fotografía, 15 MB por clip) antes de firmar. Si
+el navegador sube más bytes de los que dijo, **S3 rechaza el `PUT`**. Validar
+solo en la pantalla no serviría: cualquiera puede llamar al API directamente.
+
+La duración de diez segundos del video sí se comprueba en el navegador, porque
+es el único lugar donde se puede: el servidor tendría que descargar y analizar
+el archivo para saber cuánto dura, y para entonces ya lo habría pagado.
+
+**Para ver una evidencia** se pide una URL de lectura que caduca en minutos
+(`GET /expedientes/:id/evidencias/:evidenciaId/url`). El bucket es privado: una
+foto de cédula con firma no puede quedar accesible a quien adivine la dirección.
+
 ### Cercanía y tiempo estimado
 
 `apps/api/src/geo.ts` calcula la distancia con la fórmula del haversine,

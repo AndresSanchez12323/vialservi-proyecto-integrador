@@ -4,7 +4,9 @@ import { useParams } from 'react-router-dom';
 import { enviar, pedir, sesion, type Expediente } from '../comun/api';
 import { Atras } from '../comun/Atras';
 import { Mapa } from '../comun/Mapa';
-import { CATEGORIAS, ESTADOS, ROLES, TIPOS, fecha, haceCuanto } from '../comun/formato';
+import { SubirEvidencia } from '../comun/SubirEvidencia';
+import { VistaEvidencia } from '../comun/VistaEvidencia';
+import { CATEGORIAS, ESTADOS, TIPOS, fecha, haceCuanto } from '../comun/formato';
 
 const idLocal = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -210,18 +212,6 @@ export function ExpedienteDetalle() {
       enviar(`/expedientes/${id}/observaciones`, 'PATCH', {
         observaciones: texto,
         version: (data?.observacionesVersion ?? 0) + 1,
-      }),
-    onSuccess: refrescar,
-  });
-
-  const subir = useMutation({
-    mutationFn: (tipo: 'FOTO' | 'VIDEO') =>
-      enviar(`/expedientes/${id}/evidencias`, 'POST', {
-        idLocal: idLocal(),
-        tipo,
-        categoria,
-        archivo: `evidencias/${data?.servicio.vehiculo.placa}-${categoria.toLowerCase()}-${Date.now()}.${tipo === 'FOTO' ? 'jpg' : 'mp4'}`,
-        tomadaEn: new Date().toISOString(),
       }),
     onSuccess: refrescar,
   });
@@ -464,41 +454,17 @@ export function ExpedienteDetalle() {
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button className="boton-suave" disabled={subir.isPending} onClick={() => subir.mutate('FOTO')}>
-                + Fotografía
-              </button>
-              <button className="boton-suave" disabled={subir.isPending} onClick={() => subir.mutate('VIDEO')}>
-                + Video (10 s)
-              </button>
-            </div>
-            {subir.error && <p className="text-xs text-rose-300">{(subir.error as Error).message}</p>}
-            <p className="text-[11px] text-slate-500">
-              En esta etapa se registra la referencia del archivo; la carga real irá a
-              almacenamiento de archivos.
-            </p>
+            <SubirEvidencia
+              expedienteId={data.id}
+              categoria={categoria}
+              alSubir={refrescar}
+            />
           </div>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data.evidencias.map((ev) => (
-            <div key={ev.id} className="vidrio-suave p-4">
-              <div className="flex flex-wrap items-center justify-between gap-1">
-                <span className={`etiqueta border ${CATEGORIAS[ev.categoria]?.clase ?? ''}`}>
-                  {CATEGORIAS[ev.categoria]?.texto ?? ev.categoria}
-                </span>
-                <span className="text-[11px] text-slate-400">{ev.tipo}</span>
-              </div>
-              {ev.posteriorAlCierre && (
-                <span className="etiqueta mt-2 border border-amber-300/40 bg-amber-400/20 text-amber-200">
-                  posterior al cierre
-                </span>
-              )}
-              <p className="mt-2 truncate font-mono text-xs text-slate-400">{ev.archivo}</p>
-              <p className="mt-2 text-sm">{ev.subidaPor.nombre}</p>
-              <p className="text-xs text-amber-300">{ROLES[ev.subidaPor.rol] ?? ev.subidaPor.rol}</p>
-              <p className="mt-1 text-xs text-slate-500">{fecha(ev.tomadaEn)}</p>
-            </div>
+            <VistaEvidencia key={ev.id} evidencia={ev} expedienteId={data.id} />
           ))}
           {data.evidencias.length === 0 && (
             <p className="text-sm text-slate-500">Todavía no hay evidencias.</p>

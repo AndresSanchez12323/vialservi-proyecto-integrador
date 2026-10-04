@@ -16,6 +16,7 @@ import {
   PrismaClient, Rol, TipoServicio, TipoEvidencia, CategoriaEvidencia,
 } from '@prisma/client';
 import { calcularEstado } from '../src/estado.js';
+import { sincronizarSecuencia } from '../src/consecutivo.js';
 
 const prisma = new PrismaClient();
 
@@ -290,6 +291,11 @@ async function main() {
       },
     ],
   });
+
+  // Los consecutivos de arriba son fijos para que la demostracion sea legible.
+  // Hay que adelantar la secuencia o el primer expediente que cree el
+  // aplicativo repetiria el numero EXP-2026-0001.
+  await sincronizarSecuencia();
 
   const porEstado = await prisma.servicio.groupBy({ by: ['estado'], _count: true });
 
