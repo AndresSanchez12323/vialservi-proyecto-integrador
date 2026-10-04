@@ -1,0 +1,24 @@
+# Lo que NO debe entrar en la imagen.
+node_modules
+**/node_modules
+**/dist
+.git
+.github
+docs
+infra/cloudformation
+Parcial
+*.md
+*.patch
+# Nunca: llevaria secretos del portatil dentro de la imagen.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.db-journal
+**/*.tsbuildinfo
+# OJO: no excluir "apps/web" entero. El Dockerfile copia apps/web/package.json
+# porque npm ci valida el lockfile contra TODOS los workspaces y falla si falta.
+# El codigo del SPA no se copia nunca, asi que no hace falta excluirlo.
+apps/web/src
+apps/web/public
+apps/web/index.html

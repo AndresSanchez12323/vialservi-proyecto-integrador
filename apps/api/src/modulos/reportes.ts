@@ -35,7 +35,8 @@ rutasReportes.get('/historial', async (req, res) => {
 
   const servicios = await prisma.servicio.findMany({
     where: {
-      ...(placa ? { vehiculo: { placa: { contains: placa } } } : {}),
+      // insensitive: en PostgreSQL `contains` distingue mayusculas (ver vehiculos.ts)
+      ...(placa ? { vehiculo: { placa: { contains: placa, mode: 'insensitive' as const } } } : {}),
       ...(porTipo.includes(tipo as (typeof porTipo)[number]) ? { tipo: tipo as (typeof porTipo)[number] } : {}),
     },
     orderBy: { solicitadoEn: 'desc' },

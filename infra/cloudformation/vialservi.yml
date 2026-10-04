@@ -1,0 +1,539 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  VialServi - infraestructura completa en AWS.
+  CloudFront sirve el SPA desde S3 y enruta /api/* al API, que corre en ECS
+  Fargate detras de un balanceador y guarda en RDS PostgreSQL. Las evidencias
+  van a un bucket privado con URL prefirmadas.
+
+# ─────────────────────────────────────────────────────────────────────────
+# Por que esta forma y no otra
+#
+#   - CloudFront al frente de TODO: da HTTPS valido sin tener que comprar un
+#     dominio, y al compartir origen el SPA y el API no hay CORS ni contenido
+#     mixto. Es ademas el requisito para que el service worker de la PWA
+#     (etapa 2, trabajo sin senal) pueda funcionar: sin HTTPS no se registra.
+#   - Fargate y no EC2: no hay servidor que parchar, y el redespliegue es un
+#     solo comando. Para un equipo de tres estudiantes eso vale mas que
+#     ahorrarse unos dolares administrando una instancia.
+#   - Las tareas van en subredes PUBLICAS con IP publica. Es a proposito: asi
+#     alcanzan ECR y SES por el gateway de internet y NO hace falta un NAT
+#     Gateway, que cuesta mas que todo el resto de este proyecto junto.
+#     Nadie les llega de fuera porque el grupo de seguridad solo admite
+#     trafico del balanceador.
+#   - RDS en subredes PRIVADAS y sin acceso publico. Las migraciones las
+#     aplica el contenedor al arrancar, asi que nunca hay que abrir la base a
+#     internet.
+# ─────────────────────────────────────────────────────────────────────────
+
+Parameters:
+  Proyecto:
+    Type: String
+    Default: vialservi
+    Description: Prefijo para nombrar los recursos.
+
+  ImagenApi:
+    Type: String
+    Description: >
+      URI completa de la imagen en ECR, con etiqueta.
+      Ej: 123456789012.dkr.ecr.us-east-1.amazonaws.com/vialservi-api:v1
+
+  ClaveBaseDatos:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: >
+      Contrasena del usuario maestro de PostgreSQL. No se guarda en texto en
+      la plantilla: se escribe al desplegar y queda en SSM Parameter Store.
+
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: Clave para firmar las sesiones. Generar con openssl rand -base64 48
+
+  CorreoRemitente:
+    Type: String
+    Default: ''
+    Description: >
+      Direccion verificada en SES para los correos de recuperacion. Si se deja
+      vacia, el API queda en modo consola y los codigos salen en CloudWatch.
+
+Conditions:
+  ConCorreo: !Not [!Equals [!Ref CorreoRemitente, '']]
+
+Resources:
+  # ── Red ────────────────────────────────────────────────────────────────
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-vpc' }]
+
+  Igw:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-igw' }]
+
+  IgwAdjunto:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref Igw
+
+  # Dos zonas de disponibilidad porque RDS lo exige para su grupo de subredes,
+  # aunque la base sea de una sola instancia.
+  SubredPublicaA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-publica-a' }]
+
+  SubredPublicaB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-publica-b' }]
+
+  SubredPrivadaA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-privada-a' }]
+
+  SubredPrivadaB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.20.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-privada-b' }]
+
+  TablaRutasPublica:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-rutas-publicas' }]
+
+  RutaInternet:
+    Type: AWS::EC2::Route
+    DependsOn: IgwAdjunto
+    Properties:
+      RouteTableId: !Ref TablaRutasPublica
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Igw
+
+  AsocRutasA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref SubredPublicaA, RouteTableId: !Ref TablaRutasPublica }
+
+  AsocRutasB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref SubredPublicaB, RouteTableId: !Ref TablaRutasPublica }
+
+  # ── Grupos de seguridad ────────────────────────────────────────────────
+  SgBalanceador:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Entrada HTTP al balanceador
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        # Abierto porque delante esta CloudFront, que no tiene un rango fijo
+        # comodo de fijar aqui. El contenido sensible lo protege la sesion JWT,
+        # no el acceso a la red.
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-sg-alb' }]
+
+  SgApi:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Tareas del API; solo reciben del balanceador
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          SourceSecurityGroupId: !Ref SgBalanceador
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-sg-api' }]
+
+  SgBaseDatos:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL; solo recibe del API
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref SgApi
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-sg-rds' }]
+
+  # ── Base de datos ──────────────────────────────────────────────────────
+  GrupoSubredesBase:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subredes privadas para RDS
+      SubnetIds: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
+
+  BaseDatos:
+    Type: AWS::RDS::DBInstance
+    # Retain: si alguien borra la pila por error, los expedientes no se van con
+    # ella. Para borrarla de verdad hay que eliminar la base a mano.
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${Proyecto}-postgres'
+      Engine: postgres
+      EngineVersion: '16'
+      # db.t4g.micro entra en la capa gratuita los primeros 12 meses.
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: '20'
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: vialservi
+      MasterUsername: vialservi
+      MasterUserPassword: !Ref ClaveBaseDatos
+      DBSubnetGroupName: !Ref GrupoSubredesBase
+      VPCSecurityGroups: [!Ref SgBaseDatos]
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      DeleteAutomatedBackups: false
+      MultiAZ: false
+      AutoMinorVersionUpgrade: true
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-postgres' }]
+
+  # ── Secretos ───────────────────────────────────────────────────────────
+  # Parameter Store y no Secrets Manager: hace lo mismo para este caso y los
+  # parametros estandar no se cobran.
+  ParamCadenaBase:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${Proyecto}/DATABASE_URL'
+      Type: String
+      Value: !Sub 'postgresql://vialservi:${ClaveBaseDatos}@${BaseDatos.Endpoint.Address}:${BaseDatos.Endpoint.Port}/vialservi?schema=public'
+      Description: Cadena de conexion que lee el contenedor al arrancar
+
+  ParamJwt:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub '/${Proyecto}/JWT_SECRET'
+      Type: String
+      Value: !Ref JwtSecret
+
+  # ── Almacenamiento ─────────────────────────────────────────────────────
+  BucketEvidencias:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub '${Proyecto}-evidencias-${AWS::AccountId}'
+      # PRIVADO. Una foto de cedula con firma no puede quedar accesible a quien
+      # adivine la direccion: se entrega siempre con URL prefirmada que caduca.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      # CORS para que el navegador pueda hacer el PUT prefirmado. Sin esto el
+      # navegador bloquea la subida aunque la firma sea correcta.
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [PUT, GET, HEAD]
+            AllowedOrigins: ['*']
+            AllowedHeaders: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 3000
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleRules:
+        # Base para la retencion 2+3 anos del alcance: a los dos anos el archivo
+        # pasa a una clase mas barata en vez de borrarse. El borrado controlado
+        # a los cinco anos lo hara el aplicativo, que es el unico que sabe si
+        # hay una reclamacion abierta.
+        - Id: historico-a-los-dos-anos
+          Status: Enabled
+          Transitions:
+            - { StorageClass: STANDARD_IA, TransitionInDays: 730 }
+      Tags: [{ Key: Name, Value: !Sub '${Proyecto}-evidencias' }]
+
+  BucketWeb:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${Proyecto}-web-${AWS::AccountId}'
+      # Tambien privado: se sirve solo a traves de CloudFront con OAC.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+
+  PoliticaBucketWeb:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref BucketWeb
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub '${BucketWeb.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribucion}'
+
+  # ── Permisos de las tareas ─────────────────────────────────────────────
+  RolEjecucion:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: leer-parametros
+          PolicyDocument:
+            Statement:
+              # El rol de EJECUCION es el que resuelve los "secrets" de la
+              # definicion de tarea, antes de que el contenedor exista.
+              - Effect: Allow
+                Action: [ssm:GetParameters, ssm:GetParameter]
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Proyecto}/*'
+
+  RolTarea:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: evidencias-y-correo
+          PolicyDocument:
+            Statement:
+              # Solo sobre el contenido del bucket de evidencias: ni listar
+              # otros buckets ni borrar el bucket.
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub '${BucketEvidencias.Arn}/*'
+              - Effect: Allow
+                Action: [ses:SendEmail]
+                Resource: '*'
+
+  Registros:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${Proyecto}-api'
+      # 30 dias: suficiente para depurar y evita que el log crezca sin control.
+      RetentionInDays: 30
+
+  # ── Balanceador ────────────────────────────────────────────────────────
+  Balanceador:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${Proyecto}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets: [!Ref SubredPublicaA, !Ref SubredPublicaB]
+      SecurityGroups: [!Ref SgBalanceador]
+
+  GrupoDestino:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${Proyecto}-tg'
+      Port: 4000
+      Protocol: HTTP
+      # "ip" es obligatorio con Fargate: las tareas no son instancias.
+      TargetType: ip
+      VpcId: !Ref Vpc
+      # /api/salud responde sin tocar la base, para que una consulta lenta no
+      # haga que el balanceador saque una tarea que esta viva.
+      HealthCheckPath: /api/salud
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher: { HttpCode: '200' }
+      TargetGroupAttributes:
+        # El API cierra ordenado en unos segundos; esperar 300 alargaria cada
+        # despliegue sin ninguna ganancia.
+        - { Key: deregistration_delay.timeout_seconds, Value: '20' }
+
+  Escucha:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Balanceador
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref GrupoDestino
+
+  # ── ECS ────────────────────────────────────────────────────────────────
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${Proyecto}-cluster'
+
+  DefinicionTarea:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${Proyecto}-api'
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      # 0.25 vCPU / 0.5 GB: el minimo de Fargate y alcanza de sobra, porque los
+      # archivos no pasan por el API.
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !GetAtt RolEjecucion.Arn
+      TaskRoleArn: !GetAtt RolTarea.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ImagenApi
+          Essential: true
+          PortMappings: [{ ContainerPort: 4000, Protocol: tcp }]
+          Environment:
+            - { Name: NODE_ENV, Value: production }
+            - { Name: PORT, Value: '4000' }
+            - { Name: AWS_REGION, Value: !Ref 'AWS::Region' }
+            - { Name: ALMACENAMIENTO_MODO, Value: s3 }
+            - { Name: S3_BUCKET_EVIDENCIAS, Value: !Ref BucketEvidencias }
+            - { Name: CORREO_MODO, Value: !If [ConCorreo, ses, consola] }
+            - { Name: CORREO_REMITENTE, Value: !If [ConCorreo, !Ref CorreoRemitente, 'no-responde@vialservi.co'] }
+            # El SPA comparte origen con el API detras de CloudFront, asi que
+            # no hay peticiones de otro origen que permitir.
+            - { Name: CORS_ORIGIN, Value: '' }
+          Secrets:
+            # Van como "secrets" y no como "environment": asi no aparecen en la
+            # consola ni en `describe-task-definition`.
+            - { Name: DATABASE_URL, ValueFrom: !Ref ParamCadenaBase }
+            - { Name: JWT_SECRET, ValueFrom: !Ref ParamJwt }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref Registros
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: api
+
+  Servicio:
+    Type: AWS::ECS::Service
+    DependsOn: Escucha
+    Properties:
+      ServiceName: !Sub '${Proyecto}-api'
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref DefinicionTarea
+      LaunchType: FARGATE
+      DesiredCount: 1
+      # Da tiempo a que el contenedor aplique migraciones antes de que el
+      # balanceador empiece a juzgarlo.
+      HealthCheckGracePeriodSeconds: 120
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          # IP publica para alcanzar ECR y SES sin pagar un NAT Gateway. No
+          # queda expuesto: el grupo de seguridad solo admite al balanceador.
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref SubredPublicaA, !Ref SubredPublicaB]
+          SecurityGroups: [!Ref SgApi]
+      LoadBalancers:
+        - ContainerName: api
+          ContainerPort: 4000
+          TargetGroupArn: !Ref GrupoDestino
+
+  # ── CloudFront ─────────────────────────────────────────────────────────
+  AccesoOrigen:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${Proyecto}-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribucion:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${Proyecto} - SPA y API'
+        DefaultRootObject: index.html
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: spa
+            DomainName: !GetAtt BucketWeb.RegionalDomainName
+            OriginAccessControlId: !GetAtt AccesoOrigen.Id
+            S3OriginConfig: { OriginAccessIdentity: '' }
+          - Id: api
+            DomainName: !GetAtt Balanceador.DNSName
+            CustomOriginConfig:
+              # http-only: entre CloudFront y el balanceador el trafico va sin
+              # cifrar por la red de AWS. Para subir a HTTPS de punta a punta
+              # hace falta un dominio y un certificado de ACM en el
+              # balanceador; esta en el runbook como mejora.
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+        DefaultCacheBehavior:
+          TargetOriginId: spa
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          # CachingOptimized, politica administrada por AWS.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            Compress: true
+            # CachingDisabled: una respuesta del API jamas se debe cachear, o un
+            # usuario veria los expedientes de otro.
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            # AllViewerExceptHostHeader: reenvia la cabecera Authorization, sin
+            # la cual todas las peticiones responderian 401.
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+        CustomErrorResponses:
+          # El SPA maneja sus rutas en el navegador: una recarga en
+          # /expedientes/3 pide a S3 un objeto que no existe, y sin esto daria
+          # 403 en vez de abrir la aplicacion.
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 10 }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 10 }
+        ViewerCertificate:
+          # Certificado de CloudFront: da HTTPS valido sin comprar dominio.
+          CloudFrontDefaultCertificate: true
+
+Outputs:
+  Url:
+    Description: Direccion publica del aplicativo
+    Value: !Sub 'https://${Distribucion.DomainName}'
+  IdDistribucion:
+    Description: Para invalidar la cache al publicar el SPA
+    Value: !Ref Distribucion
+  BucketWebNombre:
+    Description: Bucket donde se sube el SPA compilado
+    Value: !Ref BucketWeb
+  BucketEvidenciasNombre:
+    Value: !Ref BucketEvidencias
+  EndpointBase:
+    Value: !GetAtt BaseDatos.Endpoint.Address
+  Cluster:
+    Value: !Ref Cluster
+  Servicio:
+    Value: !GetAtt Servicio.Name

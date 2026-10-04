@@ -1,0 +1,38 @@
+# PostgreSQL para desarrollo.
+#
+# El proyecto dejo SQLite porque en AWS la base vive en RDS y un archivo en
+# disco no sobrevive a un redespliegue. Se usa Postgres TAMBIEN en local a
+# proposito: las diferencias entre motores no se descubren en produccion. Un
+# ejemplo real de este proyecto es que `contains` ignora mayusculas en SQLite
+# pero las distingue en PostgreSQL, asi que la busqueda por placa se habria
+# roto solo al desplegar.
+#
+#   docker compose up -d        levanta la base
+#   npm run setup               crea el esquema y los datos de demostracion
+#   npm run dev                 API y interfaz
+#
+# Si no pueden usar Docker, sirve igual cualquier PostgreSQL 16: basta apuntar
+# DATABASE_URL a el.
+services:
+  base:
+    image: postgres:16-alpine
+    container_name: vialservi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vialservi
+      POSTGRES_PASSWORD: vialservi
+      POSTGRES_DB: vialservi
+    ports:
+      - '5432:5432'
+    volumes:
+      - datos:/var/lib/postgresql/data
+    # Sin esto, `npm run setup` puede correr antes de que la base acepte
+    # conexiones y fallar con un error que parece de configuracion.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vialservi -d vialservi']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  datos:

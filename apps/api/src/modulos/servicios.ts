@@ -5,6 +5,7 @@ import { prisma } from '../prisma.js';
 import { autenticar, exigirRol } from '../auth.js';
 import { estaCerrado, recalcularEstado } from '../estado.js';
 import { versionVigente } from '../formatos.js';
+import { siguienteConsecutivo } from '../consecutivo.js';
 import { distanciaRecorridoKm, estimarMinutos, puntoDe } from '../geo.js';
 import {
   avisar,
@@ -259,10 +260,9 @@ rutasServicios.patch('/:id/clasificar', exigirRol('CENTRAL', 'ADMINISTRADOR'), a
     });
 
     if (!servicio.expediente) {
-      // El consecutivo se calcula contando: con un solo proceso basta, y la
-      // unicidad la garantiza el indice de la columna.
-      const total = await tx.expediente.count();
-      const consecutivo = `EXP-2026-${String(total + 1).padStart(4, '0')}`;
+      // El consecutivo lo entrega una secuencia de PostgreSQL: con varias
+      // instancias del API, contar filas entregaria el mismo numero dos veces.
+      const consecutivo = await siguienteConsecutivo(tx);
       await tx.expediente.create({
         data: {
           consecutivo,

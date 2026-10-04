@@ -139,10 +139,13 @@ no tener que mirar el log. **En producción debe quedar en `false`**.
 | Lenguaje | TypeScript |
 | API | Node.js + Express |
 | Validación | Zod |
-| Persistencia | Prisma ORM sobre SQLite (portable a PostgreSQL / Supabase) |
+| Persistencia | Prisma ORM sobre **PostgreSQL** (local con Docker, en AWS con RDS) |
 | Seguridad | JWT + bcrypt, control por roles en el servidor |
 | Interfaz | React 18 + Vite + Tailwind CSS + TanStack Query |
 | Mapas | Leaflet + OpenStreetMap (sin llave de API) |
+| Archivos | **Amazon S3**: el navegador sube directo con URL prefirmadas (modo local para desarrollar sin AWS) |
+| Correo | **Amazon SES** (modo consola para desarrollar sin AWS) |
+| Despliegue | Docker · ECS Fargate · CloudFront · CloudFormation |
 | Pruebas | Vitest + Supertest |
 
 El diseño de la interfaz usa *glassmorphism*: superficies translúcidas con
@@ -150,19 +153,25 @@ desenfoque sobre un fondo con degradado.
 
 ## Puesta en marcha
 
-Requiere Node.js 20 o superior.
+Requiere Node.js 20 o superior y PostgreSQL 16 (lo más fácil es con Docker).
 
 ```bash
-npm run setup   # instala, crea el esquema y carga los datos de demostración
-npm run dev     # API en :4000, interfaz en :5173
+npm run base:arriba   # PostgreSQL 16 en Docker
+npm run setup         # instala, crea el .env, aplica migraciones y carga datos
+npm run dev           # API en :4000, interfaz en :5173
 ```
 
-`npm run setup` copia también el `.env` si no existe. Si lo hace a mano:
+> **El proyecto usa PostgreSQL, no SQLite.** También en local, a propósito: las
+> diferencias entre motores no se descubren en producción. Ejemplo real de este
+> proyecto: `contains` ignora mayúsculas en SQLite pero las distingue en
+> PostgreSQL, así que la búsqueda por placa se habría roto sola al desplegar.
+>
+> Si no pueden usar Docker, sirve cualquier PostgreSQL 16: basta apuntar
+> `DATABASE_URL` a él en `apps/api/.env`.
 
-```bash
-cp apps/api/.env.example apps/api/.env
-npm run db:push && npm run db:seed
-```
+**No hace falta cuenta de AWS para desarrollar ni para la demostración:** por
+omisión las evidencias quedan en modo `local` (registran la referencia) y el
+correo en modo `consola` (el código sale en el log del API).
 
 > Las pruebas y la aplicación **necesitan los datos de demostración**: sin
 > `npm run db:seed` no hay usuarios con los que entrar.
@@ -185,15 +194,31 @@ desde ahí se puede **crear una cuenta de cliente nueva** para ver el registro.
 npm test
 ```
 
-**81 pruebas** sobre el API real (HTTP y base de datos, no simulaciones):
+**88 pruebas** sobre el API real (HTTP y base de datos, no simulaciones):
 reglas de acceso, estado derivado, verificación de propietario, evidencias por
 formato, notificaciones, recuperación de clave, cercanía y casos de borde.
 
 ## Documentación técnica
 
-Las decisiones de diseño que no se ven en el código —en particular cómo se
-resuelve el trabajo sin señal y por qué no genera conflictos— están en
-[`docs/manual-tecnico.md`](docs/manual-tecnico.md).
+- [`docs/manual-tecnico.md`](docs/manual-tecnico.md) — decisiones de diseño que
+  no se ven en el código, en particular cómo se resuelve el trabajo sin señal y
+  por qué no genera conflictos.
+- [`docs/despliegue-aws.md`](docs/despliegue-aws.md) — **cómo subirlo a AWS**:
+  arquitectura, los tres comandos del despliegue, costos, diagnóstico y cómo
+  apagarlo sin perder datos.
+
+## Despliegue en AWS
+
+```bash
+./infra/desplegar-api.sh              # imagen del API a ECR
+./infra/crear-infraestructura.sh ...  # CloudFormation: red, RDS, Fargate, CDN
+./infra/desplegar-web.sh              # interfaz a S3 + CloudFront
+```
+
+CloudFront da HTTPS sin dominio propio y enruta `/api/*` al API, así que el SPA
+y el API comparten origen: sin CORS y **listo para el service worker de la PWA**
+de la etapa 2. El detalle está en
+[`docs/despliegue-aws.md`](docs/despliegue-aws.md).
 
 ## Estructura
 
@@ -207,7 +232,9 @@ apps/
 │       ├── estado.ts         Estado derivado de las marcas de cada rol
 │       ├── formatos.ts       Catálogo versionado por tipo de servicio
 │       ├── geo.ts            Distancia y tiempo estimado, sin servicios externos
-│       ├── correo.ts         Adaptador de correo (consola / SES / Resend)
+│       ├── correo.ts         Adaptador de correo (consola / Amazon SES)
+│       ├── almacenamiento.ts Evidencias en S3 con URL prefirmadas
+│       ├── consecutivo.ts    Consecutivo con secuencia de PostgreSQL
 │       └── modulos/          Un archivo por módulo del mapa
 └── web/                      React + Vite + Tailwind
     └── src/
@@ -218,11 +245,12 @@ apps/
 ## Lo que sigue
 
 1. Gestionar usuarios y roles desde la interfaz; alta y edición de técnicos.
-2. Carga real de archivos (hoy la evidencia registra la referencia, no sube el
-   archivo): **Supabase Storage** para fotografías y clips.
+2. Alta y edición de técnicos desde la interfaz.
 3. **Trabajo sin señal (etapa 2)**: **Dexie.js** sobre IndexedDB para el buzón de
-   salida y **vite-plugin-pwa** para que abra sin conexión. El modelo ya está
-   preparado: campos separados por rol, filas con `idLocal` idempotente y
-   contadores de versión en los campos editables.
-4. Retención 2+3 años e histórico con acceso restringido.
-5. Salida a **PostgreSQL sobre Supabase**.
+   salida y **vite-plugin-pwa** para que abra sin conexión. Es lo único que
+   falta, y es solo código de cliente: la infraestructura ya tiene HTTPS, mismo
+   origen y subida directa a S3, y el modelo tiene campos separados por rol,
+   `idLocal` idempotente y contadores de versión.
+4. Retención 2+3 años e histórico con acceso restringido (el bucket ya pasa a
+   `STANDARD_IA` a los dos años).
+5. HTTPS de punta a punta con dominio propio y certificado de ACM.

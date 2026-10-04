@@ -184,10 +184,18 @@ rutasAuth.post('/recuperar', async (req, res) => {
     });
   });
 
-  await enviarCorreo({
-    para: usuario.correo,
-    ...correoRecuperacion(usuario.nombre, codigo, config.CODIGO_VIGENCIA_MINUTOS),
-  });
+  // El envio va en try/catch a proposito: si SES falla y la excepcion subiera,
+  // esta ruta responderia 500 para una cuenta que existe y 200 para una que no,
+  // y esa diferencia es justo lo que el mensaje generico trata de ocultar. El
+  // codigo ya quedo guardado, asi que el usuario puede volver a pedirlo.
+  try {
+    await enviarCorreo({
+      para: usuario.correo,
+      ...correoRecuperacion(usuario.nombre, codigo, config.CODIGO_VIGENCIA_MINUTOS),
+    });
+  } catch (error) {
+    console.error('[recuperar] no se pudo enviar el correo:', error instanceof Error ? error.message : error);
+  }
 
   res.json({
     ...generico,
