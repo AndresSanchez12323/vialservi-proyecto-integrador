@@ -38,10 +38,34 @@ const esquema = z.object({
   S3_URL_MINUTOS: z.coerce.number().int().positive().max(60).default(15),
 
   // ── Correo (recuperacion de clave) ──
-  // "consola" imprime en el log y funciona sin credenciales; "ses" envia de
-  // verdad con Amazon SES.
-  CORREO_MODO: z.enum(['consola', 'ses']).default('consola'),
+  //   "consola": imprime en el log; funciona sin credenciales.
+  //   "ses":     Amazon SES. Una cuenta nueva esta en "sandbox" y solo envia a
+  //              direcciones verificadas hasta que AWS aprueba el acceso a
+  //              produccion (unas 24 horas).
+  //   "smtp":    cualquier proveedor por SMTP (Gmail, Brevo, SendGrid...).
+  //              Envia a CUALQUIER destinatario de inmediato y solo exige
+  //              verificar el remitente.
+  CORREO_MODO: z.enum(['consola', 'ses', 'smtp']).default('consola'),
   CORREO_REMITENTE: z.string().default('no-responde@vialservi.co'),
+  /**
+   * URL publica de un logo para la cabecera del correo. Opcional a proposito:
+   * la mayoria de los clientes bloquean las imagenes, asi que si no se define
+   * la marca se dibuja con texto, que siempre se ve.
+   */
+  CORREO_LOGO_URL: z.string().url().optional().or(z.literal('').transform(() => undefined)),
+
+  // ── SMTP (solo con CORREO_MODO=smtp) ──
+  SMTP_HOST: z.string().optional(),
+  SMTP_PUERTO: z.coerce.number().int().positive().default(587),
+  /**
+   * true para el puerto 465 (TLS desde el saludo); false para el 587, que
+   * empieza en claro y sube a TLS con STARTTLS. Equivocarse aqui da un tiempo
+   * de espera agotado que no explica nada, asi que se deriva del puerto cuando
+   * no se indica.
+   */
+  SMTP_SEGURO: z.enum(['true', 'false']).optional().transform((v) => v === undefined ? undefined : v === 'true'),
+  SMTP_USUARIO: z.string().optional(),
+  SMTP_CLAVE: z.string().optional(),
   /**
    * Solo para desarrollo: devuelve el codigo en la respuesta HTTP. En
    * produccion debe quedar en false, porque si no cualquiera que sepa un
@@ -70,6 +94,12 @@ export const config = {
   esProduccion: resultado.data.NODE_ENV === 'production',
   /** Origenes permitidos, ya separados. */
   origenes: resultado.data.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean),
+  /**
+   * Si no se indica, se deduce del puerto: 465 es TLS implicito y cualquier
+   * otro usa STARTTLS. Es la combinacion correcta en todos los proveedores
+   * habituales y evita el error de configuracion mas frecuente.
+   */
+  SMTP_SEGURO: resultado.data.SMTP_SEGURO ?? resultado.data.SMTP_PUERTO === 465,
 };
 
 // ── Comprobaciones que dependen de varias variables a la vez ──────────────
@@ -80,6 +110,21 @@ if (config.ALMACENAMIENTO_MODO === 's3' && !config.S3_BUCKET_EVIDENCIAS) {
   throw new Error(
     'ALMACENAMIENTO_MODO=s3 exige S3_BUCKET_EVIDENCIAS con el nombre del bucket.',
   );
+}
+
+// Un modo smtp a medias es peor que no tenerlo: el aplicativo diria "enviamos
+// un codigo" y fallaria en cada intento. Mejor no arrancar y decir que falta.
+if (config.CORREO_MODO === 'smtp') {
+  const faltan = [
+    ['SMTP_HOST', config.SMTP_HOST],
+    ['SMTP_USUARIO', config.SMTP_USUARIO],
+    ['SMTP_CLAVE', config.SMTP_CLAVE],
+  ]
+    .filter(([, valor]) => !valor)
+    .map(([nombre]) => nombre);
+  if (faltan.length > 0) {
+    throw new Error(`CORREO_MODO=smtp exige ${faltan.join(', ')}.`);
+  }
 }
 
 // Revelar el codigo solo tiene sentido con el correo en consola. Si alguien
@@ -116,8 +161,9 @@ if (config.esProduccion) {
         '│ AVISO: la recuperacion de contrasena NO ENVIARA CORREOS.         │\n' +
         '│ CORREO_MODO=consola en produccion: el codigo solo se imprime     │\n' +
         '│ aqui, en el log. El usuario no recibira nada.                    │\n' +
-        '│ Para enviar de verdad: verifique un remitente en SES y vuelva a  │\n' +
-        '│ desplegar con CorreoRemitente. Ver docs/despliegue-aws.md §5.    │\n' +
+        '│ Para enviar de verdad hay dos caminos, ambos en el runbook §5:   │\n' +
+        '│  · CORREO_MODO=smtp con Gmail u otro: envia ya a cualquiera.     │\n' +
+        '│  · CORREO_MODO=ses: exige salir del sandbox (unas 24 horas).     │\n' +
         '└──────────────────────────────────────────────────────────────────┘\n',
     );
   }
