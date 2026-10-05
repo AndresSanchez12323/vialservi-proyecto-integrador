@@ -374,6 +374,20 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
     onSuccess: alTerminar,
   });
 
+  // Lo que falta para cerrar, sin contar la marca de terminado: si faltan
+  // fotos del formato, el servidor rechaza el terminado, asi que se le muestra
+  // al tecnico aqui antes de intentarlo, con enlace al expediente para subirlas.
+  const control = useQuery({
+    queryKey: ['expediente', servicio.expediente?.id, 'control'],
+    queryFn: () =>
+      pedir<{ control: { avisos: string[] } }>(`/expedientes/${servicio.expediente!.id}`),
+    enabled: servicio.estado === 'EN_EJECUCION' && !!servicio.expediente,
+    staleTime: 15000,
+  });
+  const faltanFotos = (control.data?.control.avisos ?? [])
+    .filter((a) => !/terminado/i.test(a));
+  const bloqueado = !!control.data && faltanFotos.length > 0;
+
   const puedeInformar = servicio.estado === 'ASIGNADO';
 
   return (
@@ -409,6 +423,31 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
         </p>
       )}
 
+      {servicio.estado === 'EN_EJECUCION' && faltanFotos.length > 0 && (
+        <div className="rounded-lg border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+          <p className="font-medium">Antes de terminar faltan evidencias:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {faltanFotos.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {servicio.expediente && (
+              <Link to={`/expedientes/${servicio.expediente.id}`} className="underline hover:text-amber-200">
+                Diligenciar expediente
+              </Link>
+            )}
+            <button
+              type="button"
+              className="underline hover:text-amber-200"
+              onClick={() => control.refetch()}
+            >
+              Revisar de nuevo
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {servicio.estado === 'ASIGNADO' && (
           <button className="boton" onClick={() => avanzar.mutate('EN_EJECUCION')}>
@@ -422,7 +461,16 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
                 Diligenciar expediente
               </Link>
             )}
-            <button className="boton-suave" onClick={() => avanzar.mutate('TERMINADO')}>
+            <button
+              className="boton-suave"
+              onClick={() => avanzar.mutate('TERMINADO')}
+              disabled={bloqueado || avanzar.isPending}
+              title={
+                bloqueado
+                  ? 'Suba primero las evidencias que faltan'
+                  : 'Marca el servicio como terminado'
+              }
+            >
               Marcar terminado
             </button>
           </>

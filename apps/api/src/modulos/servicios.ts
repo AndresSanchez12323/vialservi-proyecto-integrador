@@ -4,7 +4,7 @@ import { TipoServicio } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { autenticar, exigirRol } from '../auth.js';
 import { estaCerrado, recalcularEstado } from '../estado.js';
-import { versionVigente } from '../formatos.js';
+import { evidenciasRequeridas, faltantes, versionVigente } from '../formatos.js';
 import { siguienteConsecutivo } from '../consecutivo.js';
 import { distanciaRecorridoKm, estimarMinutos, puntoDe } from '../geo.js';
 import {
@@ -318,7 +318,7 @@ rutasServicios.patch('/:id/estado', exigirRol('TECNICO', 'CENTRAL', 'ADMINISTRAD
   const servicio = await prisma.servicio.findUnique({
     where: { id },
     include: {
-      expediente: { include: { _count: { select: { evidencias: true } } } },
+      expediente: true,
       vehiculo: true,
       tecnico: true,
     },
@@ -367,8 +367,27 @@ rutasServicios.patch('/:id/estado', exigirRol('TECNICO', 'CENTRAL', 'ADMINISTRAD
         });
       }
     }
-    if (exp._count.evidencias === 0) {
-      return res.status(409).json({ error: 'No se puede terminar un servicio sin ninguna evidencia' });
+    // Las fotos del formato se toman al terminar —la de entrega solo existe al
+    // final—, asi que se exigen aqui y no al cerrar: si se pudiera terminar
+    // sin ellas, la central descubriria el faltante al cerrar y habria que
+    // reabrir un servicio ya hecho para tomar una foto irrepetible.
+    const requeridas = evidenciasRequeridas(servicio.tipo, exp.formatoVersion);
+    const porCategoria = Object.fromEntries(
+      (
+        await prisma.evidencia.groupBy({
+          by: ['categoria'],
+          where: { expedienteId: exp.id },
+          _count: { _all: true },
+        })
+      ).map((f) => [f.categoria, f._count._all]),
+    ) as Record<string, number>;
+    const faltanFotos = faltantes(requeridas, porCategoria);
+    if (faltanFotos.length > 0) {
+      return res.status(409).json({
+        error: `Antes de terminar faltan evidencias: ${faltanFotos
+          .map((f) => `${f.etiqueta} (faltan ${f.minimo - (porCategoria[f.categoria] ?? 0)})`)
+          .join('; ')}`,
+      });
     }
 
     await prisma.servicio.update({ where: { id }, data: { terminadoEn: new Date() } });

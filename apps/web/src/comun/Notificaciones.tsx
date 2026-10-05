@@ -79,7 +79,10 @@ export function Notificaciones() {
       </button>
 
       {abierto && (
-        <div className="vidrio-flotante absolute right-0 z-50 mt-2 max-h-[28rem] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto p-2 shadow-2xl">
+        // En movil el boton queda a media fila (la cabecera se envuelve) y la
+        // bandeja anclada a su derecha se salia por el borde izquierdo. Ahi se
+        // presenta fija al viewport y centrada: siempre visible y completa.
+        <div className="vidrio-flotante absolute right-0 z-50 mt-2 max-h-[28rem] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto p-2 shadow-2xl max-sm:fixed max-sm:left-4 max-sm:mt-0 max-sm:top-1/2 max-sm:max-h-[80vh] max-sm:-translate-y-1/2">
           <div className="flex items-center justify-between px-2 py-1.5">
             <p className="text-xs uppercase tracking-wide text-slate-400">Notificaciones</p>
             {sinLeer > 0 && (

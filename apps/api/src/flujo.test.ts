@@ -373,8 +373,9 @@ describe('V. Verificacion de quien entrega el vehiculo', () => {
     expect(sinFirma.status).toBe(409);
     expect(sinFirma.body.error).toMatch(/firma/i);
 
-    // Con la firma si se puede.
+    // Con la firma y la foto de entrega si se puede.
     await subirEvidencia(tecnico1, expedienteId, 'FIRMA_CEDULA');
+    await subirEvidencia(tecnico1, expedienteId, 'ENTREGA');
     const conFirma = await como(tecnico1)(
       request(app).patch(`/api/servicios/${servicioId}/estado`).send({ estado: 'TERMINADO' }),
     );
@@ -459,19 +460,17 @@ describe('V. Verificacion de quien entrega el vehiculo', () => {
 
 // ─────────────────────────────────────────────────────────────────────────
 describe('F. El cierre se mide contra el formato del tipo de servicio', () => {
-  it('F1 · falta la evidencia de entrega: no cierra y dice que falta', async () => {
+  it('F1 · no se puede terminar sin la foto de entrega: avisa que falta', async () => {
     const { servicioId, expedienteId } = await servicioEnEjecucion();
     await como(tecnico1)(
       request(app).patch(`/api/expedientes/${expedienteId}/verificacion`).send({ esPropietario: true, version: 1 }),
     );
     await subirEvidencia(tecnico1, expedienteId, 'RECEPCION');
-    await como(tecnico1)(
+    const r = await como(tecnico1)(
       request(app).patch(`/api/servicios/${servicioId}/estado`).send({ estado: 'TERMINADO' }),
     );
-
-    const r = await como(central)(request(app).post(`/api/expedientes/${expedienteId}/cerrar`));
     expect(r.status).toBe(409);
-    expect(r.body.avisos.join(' ')).toMatch(/entregar/i);
+    expect(r.body.error).toMatch(/entregar/i);
   });
 
   it('F2 · con el juego completo del formato, cierra y el servicio queda CERRADO', async () => {
@@ -531,6 +530,7 @@ describe('N. Notificaciones', () => {
       request(app).patch(`/api/expedientes/${expedienteId}/verificacion`).send({ esPropietario: true, version: 1 }),
     );
     await subirEvidencia(tecnico1, expedienteId, 'RECEPCION');
+    await subirEvidencia(tecnico1, expedienteId, 'ENTREGA');
     await como(tecnico1)(
       request(app).patch(`/api/servicios/${servicioId}/estado`).send({ estado: 'TERMINADO' }),
     );

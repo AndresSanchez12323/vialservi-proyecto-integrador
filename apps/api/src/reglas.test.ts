@@ -207,10 +207,31 @@ describe('F. Evidencia posterior al cierre', () => {
   });
 
   it('G1 · la evidencia guarda quien la aporto', async () => {
-    const exp = await prisma.expediente.findFirstOrThrow({ where: { cerradoEn: { not: null } } });
-    const r = await como(cliente)(
+    // Con datos propios y no con el primer expediente cerrado que haya: ese
+    // puede ser de otro cliente y el permiso es por ficha, asi que el
+    // resultado cambiaba segun lo que hubieran dejado otras corridas.
+    const { ficha, token } = await clienteConCuenta();
+    const v = await vehiculoNuevo(ficha.id);
+    const t = await prisma.tecnico.findFirstOrThrow({ where: { documento: '3001' } });
+    const ahora = new Date();
+    const servicio = await prisma.servicio.create({
+      data: {
+        estado: 'TERMINADO', tipo: 'CARRO_TALLER',
+        direccion: 'Direccion de prueba 123', descripcion: 'Caso de prueba',
+        clienteId: ficha.id, vehiculoId: v.id, tecnicoId: t.id,
+        asignadoEn: ahora, iniciadoEn: ahora, terminadoEn: ahora,
+      },
+    });
+    const exp = await prisma.expediente.create({
+      data: {
+        consecutivo: `EXP-TEST-${unico()}`, servicioId: servicio.id,
+        formatoTipo: 'CARRO_TALLER', formatoVersion: 1,
+        esPropietario: true, cerradoEn: ahora,
+      },
+    });
+    const r = await como(token)(
       request(app).post(`/api/expedientes/${exp.id}/evidencias`).send({
-        idLocal: `test-cliente-${Date.now()}`, tipo: 'FOTO', archivo: 'evidencias/cliente.jpg',
+        idLocal: `test-cliente-${unico()}`, tipo: 'FOTO', archivo: 'evidencias/cliente.jpg',
       }),
     );
     expect(r.status).toBe(201);

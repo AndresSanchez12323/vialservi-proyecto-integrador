@@ -177,6 +177,77 @@ function Verificacion({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+/**
+ * Inventario de lo que iba dentro del vehiculo. Lo diligencia el TECNICO en
+ * sitio (o la central): es la constancia de lo que se recibio y por eso vive
+ * junto al vehiculo. El cliente solo lo ve.
+ */
+function Inventario({
+  vehiculoId,
+  puedeEditar,
+  alTerminar,
+}: {
+  vehiculoId: number;
+  puedeEditar: boolean;
+  alTerminar: () => void;
+}) {
+  const [descripcion, setDescripcion] = useState('');
+  const [cantidad, setCantidad] = useState('1');
+
+  const agregar = useMutation({
+    mutationFn: () =>
+      enviar(`/vehiculos/${vehiculoId}/inventario`, 'POST', {
+        descripcion: descripcion.trim(),
+        cantidad: Number(cantidad) || 1,
+      }),
+    onSuccess: () => {
+      setDescripcion('');
+      setCantidad('1');
+      alTerminar();
+    },
+  });
+
+  if (!puedeEditar) return null;
+
+  return (
+    <form
+      className="mt-3 space-y-2 border-t border-white/10 pt-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        agregar.mutate();
+      }}
+    >
+      <p className="text-xs uppercase tracking-wide text-slate-400">Agregar objeto</p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_5rem]">
+        <input
+          value={descripcion}
+          onChange={(e) => setDescripcion(e.target.value)}
+          className="campo"
+          placeholder="Descripción (ej: llanta de repuesto)"
+          maxLength={80}
+        />
+        <input
+          value={cantidad}
+          onChange={(e) => setCantidad(e.target.value.replace(/\D/g, '').slice(0, 3))}
+          className="campo text-center font-mono"
+          inputMode="numeric"
+          placeholder="Cant."
+          aria-label="Cantidad"
+        />
+      </div>
+      {agregar.error && (
+        <p className="text-xs text-rose-300">{(agregar.error as Error).message}</p>
+      )}
+      <button
+        className="boton-suave w-full sm:w-auto"
+        disabled={descripcion.trim().length < 3 || agregar.isPending}
+      >
+        {agregar.isPending ? 'Agregando…' : 'Agregar al inventario'}
+      </button>
+    </form>
+  );
+}
+
 export function ExpedienteDetalle() {
   const { id } = useParams();
   const cola = useQueryClient();
@@ -232,6 +303,14 @@ export function ExpedienteDetalle() {
     onSuccess: refrescar,
   });
 
+  // Marcar terminado vive tambien aqui adentro, no solo en la lista de
+  // servicios: el tecnico diligencia el expediente en esta pagina y no
+  // deberia salir a buscar el boton a otra parte.
+  const terminar = useMutation({
+    mutationFn: () => enviar(`/servicios/${s?.id}/estado`, 'PATCH', { estado: 'TERMINADO' }),
+    onSuccess: refrescar,
+  });
+
   if (isLoading) return <p className="text-sm text-slate-400">Cargando expediente…</p>;
   if (error) return <p className="text-sm text-rose-300">{(error as Error).message}</p>;
   if (!data) return null;
@@ -239,6 +318,9 @@ export function ExpedienteDetalle() {
   const s = data.servicio;
   const cerrado = data.cerradoEn !== null;
   const control = data.control;
+  // Lo mismo que exige el servidor para terminar, sin contar la propia marca:
+  // si faltan fotos, el boton se deshabilita aqui en lugar de rebotar.
+  const faltanParaTerminar = (control.avisos ?? []).filter((a) => !/terminado/i.test(a));
   // El cliente solo puede aportar su propia version de los hechos: las
   // categorias de soporte del tecnico no se le ofrecen.
   const categoriasDisponibles = esCliente
@@ -368,6 +450,56 @@ export function ExpedienteDetalle() {
       {/* La verificacion es del tecnico, y solo mientras el expediente este abierto. */}
       {esTecnico && !cerrado && <Verificacion exp={data} alTerminar={refrescar} />}
 
+      {/* Terminar la atencion sin salir del expediente. En la lista de
+          servicios sigue estando el boton: quedan las dos vias. */}
+      {esTecnico && !cerrado && s.estado === 'EN_EJECUCION' && (
+        <section className="vidrio border-amber-300/30 p-6">
+          <h3 className="font-medium">Terminar la atención</h3>
+          {faltanParaTerminar.length > 0 ? (
+            <>
+              <p className="mt-1 text-sm text-amber-100">Antes de terminar faltan evidencias:</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-100">
+                {faltanParaTerminar.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-400">
+                Súbalas en la sección de evidencias de esta misma página y vuelva aquí.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-slate-300">
+              Está todo lo que exige el formato. Al marcar terminado se avisa a la
+              central para que revise y cierre el expediente.
+            </p>
+          )}
+          {terminar.error && (
+            <p className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+              {(terminar.error as Error).message}
+            </p>
+          )}
+          <button
+            className="boton mt-4"
+            disabled={faltanParaTerminar.length > 0 || terminar.isPending}
+            onClick={() => terminar.mutate()}
+            title={
+              faltanParaTerminar.length > 0
+                ? 'Suba primero las evidencias que faltan'
+                : 'Marca el servicio como terminado'
+            }
+          >
+            {terminar.isPending ? 'Marcando…' : 'Marcar terminado'}
+          </button>
+        </section>
+      )}
+      {esTecnico && !cerrado && s.estado === 'TERMINADO' && (
+        <section className="vidrio p-6">
+          <p className="text-sm text-emerald-200">
+            ✓ Servicio marcado como terminado. Queda en manos de la central revisarlo y cerrar el expediente.
+          </p>
+        </section>
+      )}
+
       {(destino || puntoTecnico) && (
         <section className="vidrio p-6">
           <h3 className="mb-3 font-medium">Ubicación del servicio</h3>
@@ -422,6 +554,11 @@ export function ExpedienteDetalle() {
               <li className="text-sm text-slate-500">Sin objetos registrados.</li>
             )}
           </ul>
+          <Inventario
+            vehiculoId={s.vehiculo.id}
+            puedeEditar={(esTecnico || esCentral) && !cerrado}
+            alTerminar={refrescar}
+          />
         </section>
       </div>
 
