@@ -1,0 +1,16 @@
+# No ejecuta migraciones ni seed al arrancar una funcion.
+FROM public.ecr.aws/lambda/nodejs:22 AS compilacion
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+RUN npm ci --workspace apps/api --include-workspace-root
+COPY apps/api apps/api
+RUN npx prisma generate --schema apps/api/prisma/schema.prisma \
+ && npm run build --workspace apps/api \
+ && npm prune --omit=dev --workspace apps/api --include-workspace-root
+
+FROM public.ecr.aws/lambda/nodejs:22
+COPY --from=compilacion /app ${LAMBDA_TASK_ROOT}/
+ENV NODE_ENV=production
+CMD ["apps/api/dist/src/lambda.handler"]

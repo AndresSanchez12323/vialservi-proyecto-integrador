@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VialServi Lambda sin VPC, HTTP API, Aurora Data API. Sin capacidad reservada.
+Parameters:
+  ImagenApi:
+    Type: String
+  ClusterArn:
+    Type: String
+  SecretArn:
+    Type: String
+  BucketEvidencias:
+    Type: String
+  CorreoModo:
+    Type: String
+    AllowedValues: [smtp, ses, consola]
+  CorreoRemitente:
+    Type: String
+  SmtpHost:
+    Type: String
+    Default: ''
+  SmtpPuerto:
+    Type: String
+    Default: '587'
+  SmtpUsuario:
+    Type: String
+    Default: ''
+Resources:
+  Rol:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: acceso-vialservi
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Las copias no son evidencias: ni siquiera una referencia de
+              # archivo manipulada debe permitir firmar/descargar un dump.
+              - Effect: Deny
+                Action: 's3:*'
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/migracion-aurora/*'
+              - Effect: Allow
+                Action: [rds-data:ExecuteStatement, rds-data:BatchExecuteStatement, rds-data:BeginTransaction, rds-data:CommitTransaction, rds-data:RollbackTransaction]
+                Resource: !Ref ClusterArn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref SecretArn
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/vialservi/JWT_SECRET'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/vialservi/SMTP_CLAVE'
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/*'
+              - Effect: Allow
+                Action: ses:SendEmail
+                Resource: !Sub 'arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub '${Logs.Arn}:*'
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/vialservi-api
+      RetentionInDays: 14
+  Funcion:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: vialservi-api
+      PackageType: Image
+      Code: {ImageUri: !Ref ImagenApi}
+      Architectures: [x86_64]
+      Role: !GetAtt Rol.Arn
+      MemorySize: 512
+      Timeout: 28
+      Environment:
+        Variables:
+          NODE_ENV: production
+          BASE_MODO: data-api
+          DATABASE_URL: postgresql://unused:unused@localhost/vialservi
+          AURORA_CLUSTER_ARN: !Ref ClusterArn
+          AURORA_SECRET_ARN: !Ref SecretArn
+          AURORA_DATABASE: vialservi
+          ALMACENAMIENTO_MODO: s3
+          S3_BUCKET_EVIDENCIAS: !Ref BucketEvidencias
+          CORREO_MODO: !Ref CorreoModo
+          CORREO_REMITENTE: !Ref CorreoRemitente
+          SMTP_HOST: !Ref SmtpHost
+          SMTP_PUERTO: !Ref SmtpPuerto
+          SMTP_USUARIO: !Ref SmtpUsuario
+          CORS_ORIGIN: https://d30qod6v3z8d4e.cloudfront.net
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: vialservi-serverless
+      ProtocolType: HTTP
+  Integracion:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref Api
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt Funcion.Arn
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 29000
+  Ruta:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref Api
+      RouteKey: '$default'
+      Target: !Sub 'integrations/${Integracion}'
+  Etapa:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref Api
+      StageName: '$default'
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 10
+        ThrottlingRateLimit: 5
+  Permiso:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Funcion
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*'
+Outputs:
+  Endpoint:
+    Value: !GetAtt Api.ApiEndpoint

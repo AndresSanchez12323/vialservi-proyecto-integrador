@@ -1,5 +1,9 @@
 # Despliegue de VialServi en AWS
 
+> Migracion serverless: ver [el procedimiento nuevo](migracion-serverless.md).
+> Los tres scripts de este documento corresponden al despliegue ECS/RDS
+> original. No ejecutarlos para redesplegar Lambda ni para sembrar Aurora.
+
 Guía para dejar el aplicativo funcionando en línea desde el AWS CLI.
 Todo se hace con tres comandos; el resto del documento explica qué hace cada
 uno, qué servicios se usan y cómo arreglar lo que suele fallar.

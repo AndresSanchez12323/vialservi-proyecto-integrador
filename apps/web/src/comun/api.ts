@@ -1,4 +1,5 @@
 /** Cliente del API. Guarda la sesion y adjunta el token a cada peticion. */
+import { crearReactivador } from './reactivarApi';
 
 const LLAVE = 'vialservi.sesion';
 
@@ -42,8 +43,12 @@ const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 /** Arma la direccion final de una ruta del API. */
 export const url = (ruta: string) => `${BASE}/api${ruta}`;
+const reactivarBase = crearReactivador(url('/listo'));
 
 export async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
+  if (import.meta.env.PROD && !['GET', 'HEAD', 'OPTIONS'].includes((opciones.method ?? 'GET').toUpperCase())) {
+    await reactivarBase();
+  }
   const respuesta = await fetch(url(ruta), {
     ...opciones,
     headers: {
@@ -69,6 +74,7 @@ export const enviar = <T>(ruta: string, metodo: string, cuerpo?: unknown) =>
 
 /** Peticion sin sesion, para registro y recuperacion de clave. */
 export const publico = async <T>(ruta: string, cuerpo: unknown): Promise<T> => {
+  if (import.meta.env.PROD) await reactivarBase();
   const respuesta = await fetch(url(ruta), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

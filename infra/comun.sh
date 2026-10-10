@@ -10,6 +10,11 @@ REGION="${REGION:-us-east-1}"
 PILA="${PILA:-$PROYECTO}"
 REPO_ECR="${REPO_ECR:-$PROYECTO-api}"
 ETIQUETA="${ETIQUETA:-$(date +%Y%m%d-%H%M%S)}"
+AWS_PROFILE="${AWS_PROFILE:-personal}"
+export AWS_PROFILE REGION
+
+# Incluso los scripts historicos deben apuntar a una cuenta explicitamente.
+aws() { command aws --profile "$AWS_PROFILE" --region "$REGION" "$@"; }
 
 # Colores solo si la salida es una terminal: en un log de CI los codigos de
 # escape se ven como basura.
@@ -25,8 +30,12 @@ requiere() {
 }
 
 cuenta_aws() {
-  aws sts get-caller-identity --query Account --output text --region "$REGION" 2>/dev/null \
-    || fatal "El AWS CLI no esta autenticado. Corra 'aws configure' o exporte AWS_PROFILE."
+  local cuenta
+  cuenta="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" \
+    || fatal "El AWS CLI no esta autenticado para '$AWS_PROFILE'."
+  [ "$cuenta" = '102098709715' ] || fatal "Cuenta equivocada ($cuenta): VialServi solo usa AndresX 102098709715."
+  [ "$REGION" = 'us-east-1' ] || fatal "VialServi solo se despliega en us-east-1."
+  printf '%s\n' "$cuenta"
 }
 
 # Lee una salida de la pila de CloudFormation.
@@ -56,3 +65,7 @@ pila_existe() {
   fi
   return 0
 }
+
+# Todos los scripts que importan este archivo quedan protegidos, incluso
+# desplegar-web.sh, que no llamaba cuenta_aws por su cuenta.
+cuenta_aws >/dev/null

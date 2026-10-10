@@ -13,6 +13,11 @@ requiere aws
 requiere docker
 
 CUENTA="$(cuenta_aws)"
+if pila_existe; then
+  MODO_API="$(aws cloudformation describe-stacks --stack-name "$PILA" \
+    --query "Stacks[0].Parameters[?ParameterKey=='OrigenApi'].ParameterValue" --output text)"
+  [ "$MODO_API" != 'lambda' ] || fatal "Esta pila usa Lambda. Use infra/desplegar-serverless.ps1; este script es de ECS."
+fi
 REGISTRO="$CUENTA.dkr.ecr.$REGION.amazonaws.com"
 IMAGEN="$REGISTRO/$REPO_ECR:$ETIQUETA"
 
