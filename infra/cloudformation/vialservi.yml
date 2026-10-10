@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  VialServi - infraestructura completa en AWS.
-  CloudFront sirve el SPA desde S3 y enruta /api/* al API, que corre en ECS
-  Fargate detras de un balanceador y guarda en RDS PostgreSQL. Las evidencias
-  van a un bucket privado con URL prefirmadas.
+  VialServi - S3, CloudFront, red y parametros compartidos.
+  Permite conservar ECS/RDS para el corte gradual y retirarlos despues de
+  validar Lambda/Aurora de las pilas serverless. No borrar esta pila: Aurora
+  utiliza sus subredes. Las evidencias permanecen privadas en S3.
 
 # ─────────────────────────────────────────────────────────────────────────
 # Por que esta forma y no otra
@@ -26,6 +26,26 @@ Description: >
 # ─────────────────────────────────────────────────────────────────────────
 
 Parameters:
+  OrigenApi:
+    Type: String
+    Default: ecs
+    AllowedValues: [ecs, lambda]
+  EndpointLambda:
+    Type: String
+    Default: ''
+  MantenerEcs:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  TareasEcs:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    MaxValue: 1
+  MantenerRds:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
   Proyecto:
     Type: String
     Default: vialservi
@@ -86,6 +106,9 @@ Parameters:
       "contrasena de aplicacion" con la verificacion en dos pasos activada.
 
 Conditions:
+  UsarLambda: !Equals [!Ref OrigenApi, lambda]
+  ConEcs: !Equals [!Ref MantenerEcs, 'true']
+  ConRds: !Equals [!Ref MantenerRds, 'true']
   ConCorreo: !Not [!Equals [!Ref CorreoRemitente, '']]
   ConSmtp: !Not [!Equals [!Ref SmtpHost, '']]
 
@@ -170,6 +193,7 @@ Resources:
 
   # ── Grupos de seguridad ────────────────────────────────────────────────
   SgBalanceador:
+    Condition: ConEcs
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Entrada HTTP al balanceador
@@ -186,14 +210,14 @@ Resources:
     Properties:
       GroupDescription: Tareas del API; solo reciben del balanceador
       VpcId: !Ref Vpc
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 4000
-          ToPort: 4000
-          SourceSecurityGroupId: !Ref SgBalanceador
+      SecurityGroupIngress: !If
+        - ConEcs
+        - [{IpProtocol: tcp, FromPort: 4000, ToPort: 4000, SourceSecurityGroupId: !Ref SgBalanceador}]
+        - !Ref 'AWS::NoValue'
       Tags: [{ Key: Name, Value: !Sub '${Proyecto}-sg-api' }]
 
   SgBaseDatos:
+    Condition: ConRds
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: PostgreSQL; solo recibe del API
@@ -213,6 +237,7 @@ Resources:
       SubnetIds: [!Ref SubredPrivadaA, !Ref SubredPrivadaB]
 
   BaseDatos:
+    Condition: ConRds
     Type: AWS::RDS::DBInstance
     # Retain: si alguien borra la pila por error, los expedientes no se van con
     # ella. Para borrarla de verdad hay que eliminar la base a mano.
@@ -252,6 +277,7 @@ Resources:
   # Parameter Store y no Secrets Manager: hace lo mismo para este caso y los
   # parametros estandar no se cobran.
   ParamCadenaBase:
+    Condition: ConRds
     Type: AWS::SSM::Parameter
     Properties:
       Name: !Sub '/${Proyecto}/DATABASE_URL'
@@ -354,6 +380,7 @@ Resources:
 
   # ── Permisos de las tareas ─────────────────────────────────────────────
   RolEjecucion:
+    Condition: ConEcs
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -374,6 +401,7 @@ Resources:
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Proyecto}/*'
 
   RolTarea:
+    Condition: ConEcs
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -385,6 +413,9 @@ Resources:
         - PolicyName: evidencias-y-correo
           PolicyDocument:
             Statement:
+              - Effect: Deny
+                Action: 's3:*'
+                Resource: !Sub '${BucketEvidencias.Arn}/migracion-aurora/*'
               # Solo sobre el contenido del bucket de evidencias: ni listar
               # otros buckets ni borrar el bucket.
               - Effect: Allow
@@ -403,6 +434,7 @@ Resources:
 
   # ── Balanceador ────────────────────────────────────────────────────────
   Balanceador:
+    Condition: ConEcs
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub '${Proyecto}-alb'
@@ -412,6 +444,7 @@ Resources:
       SecurityGroups: [!Ref SgBalanceador]
 
   GrupoDestino:
+    Condition: ConEcs
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub '${Proyecto}-tg'
@@ -433,6 +466,7 @@ Resources:
         - { Key: deregistration_delay.timeout_seconds, Value: '20' }
 
   Escucha:
+    Condition: ConEcs
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref Balanceador
@@ -444,11 +478,13 @@ Resources:
 
   # ── ECS ────────────────────────────────────────────────────────────────
   Cluster:
+    Condition: ConEcs
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub '${Proyecto}-cluster'
 
   DefinicionTarea:
+    Condition: ConEcs
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: !Sub '${Proyecto}-api'
@@ -495,6 +531,7 @@ Resources:
               awslogs-stream-prefix: api
 
   Servicio:
+    Condition: ConEcs
     Type: AWS::ECS::Service
     DependsOn: Escucha
     Properties:
@@ -502,7 +539,7 @@ Resources:
       Cluster: !Ref Cluster
       TaskDefinition: !Ref DefinicionTarea
       LaunchType: FARGATE
-      DesiredCount: 1
+      DesiredCount: !Ref TareasEcs
       # Da tiempo a que el contenedor aplique migraciones antes de que el
       # balanceador empiece a juzgarlo.
       HealthCheckGracePeriodSeconds: 120
@@ -531,6 +568,24 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  RutasWeb:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub '${Proyecto}-rutas-spa'
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rutas SPA sin transformar errores del API en HTML con estado 200
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          if (uri.indexOf('/api/') !== 0 && uri.split('/').pop().indexOf('.') === -1) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+
   Distribucion:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -545,14 +600,16 @@ Resources:
             OriginAccessControlId: !GetAtt AccesoOrigen.Id
             S3OriginConfig: { OriginAccessIdentity: '' }
           - Id: api
-            DomainName: !GetAtt Balanceador.DNSName
+            DomainName: !If [UsarLambda, !Select [2, !Split ['/', !Ref EndpointLambda]], !GetAtt Balanceador.DNSName]
             CustomOriginConfig:
               # http-only: entre CloudFront y el balanceador el trafico va sin
               # cifrar por la red de AWS. Para subir a HTTPS de punta a punta
               # hace falta un dominio y un certificado de ACM en el
               # balanceador; esta en el runbook como mejora.
-              OriginProtocolPolicy: http-only
+              OriginProtocolPolicy: !If [UsarLambda, https-only, http-only]
               HTTPPort: 80
+              HTTPSPort: 443
+              OriginSSLProtocols: [TLSv1.2]
         DefaultCacheBehavior:
           TargetOriginId: spa
           ViewerProtocolPolicy: redirect-to-https
@@ -560,6 +617,9 @@ Resources:
           Compress: true
           # CachingOptimized, politica administrada por AWS.
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt RutasWeb.FunctionARN
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: api
@@ -572,12 +632,6 @@ Resources:
             # AllViewerExceptHostHeader: reenvia la cabecera Authorization, sin
             # la cual todas las peticiones responderian 401.
             OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-        CustomErrorResponses:
-          # El SPA maneja sus rutas en el navegador: una recarga en
-          # /expedientes/3 pide a S3 un objeto que no existe, y sin esto daria
-          # 403 en vez de abrir la aplicacion.
-          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 10 }
-          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 10 }
         ViewerCertificate:
           # Certificado de CloudFront: da HTTPS valido sin comprar dominio.
           CloudFrontDefaultCertificate: true
@@ -595,11 +649,14 @@ Outputs:
   BucketEvidenciasNombre:
     Value: !Ref BucketEvidencias
   EndpointBase:
+    Condition: ConRds
     Value: !GetAtt BaseDatos.Endpoint.Address
   ModoCorreo:
     Description: Como quedo el envio de correos
     Value: !If [ConSmtp, smtp, !If [ConCorreo, ses, 'consola (NO envia correos)']]
   Cluster:
+    Condition: ConEcs
     Value: !Ref Cluster
   Servicio:
+    Condition: ConEcs
     Value: !GetAtt Servicio.Name

@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Tarea temporal para copiar PostgreSQL a Aurora y comparar tablas/secuencias.
+Parameters:
+  Imagen:
+    Type: String
+  DestinoHost:
+    Type: String
+  DestinoSecretArn:
+    Type: String
+  CopiaId:
+    Type: String
+  CopiaFinal:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+Resources:
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/vialservi-migracion
+      RetentionInDays: 14
+  RolEjecucion:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Policies:
+        - PolicyName: secretos-migracion
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/vialservi/DATABASE_URL'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DestinoSecretArn
+  RolTarea:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: respaldo-migracion
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::vialservi-evidencias-${AWS::AccountId}/migracion-aurora/*'
+  Tarea:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: vialservi-migracion
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt RolEjecucion.Arn
+      TaskRoleArn: !GetAtt RolTarea.Arn
+      ContainerDefinitions:
+        - Name: migracion
+          Image: !Ref Imagen
+          Essential: true
+          Environment:
+            - {Name: AWS_REGION, Value: !Ref 'AWS::Region'}
+            - {Name: DESTINO_HOST, Value: !Ref DestinoHost}
+            - {Name: ID_COPIA, Value: !Ref CopiaId}
+            - {Name: MIGRACION_FINAL, Value: !Ref CopiaFinal}
+            - {Name: BUCKET_COPIA, Value: !Sub 'vialservi-evidencias-${AWS::AccountId}'}
+          Secrets:
+            - {Name: DATABASE_URL, ValueFrom: /vialservi/DATABASE_URL}
+            - {Name: DESTINO_CLAVE, ValueFrom: !Sub '${DestinoSecretArn}:password::'}
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref Logs
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: copia
+Outputs:
+  TareaArn:
+    Value: !Ref Tarea

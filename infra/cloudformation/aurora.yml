@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: VialServi Aurora PostgreSQL Serverless v2, Data API, pausa a cero.
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  GrupoSubredes:
+    Type: String
+  SgMigracion:
+    Type: AWS::EC2::SecurityGroup::Id
+  PermitirMigracion:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+Conditions:
+  ConMigracion: !Equals [!Ref PermitirMigracion, 'true']
+Resources:
+  Seguridad:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Aurora privada; acceso por Data API y TCP temporal de migracion
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: !If
+        - ConMigracion
+        - [{IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref SgMigracion}]
+        - !Ref 'AWS::NoValue'
+      Tags: [{Key: Name, Value: vialservi-aurora}]
+  Cluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBClusterIdentifier: vialservi-aurora
+      Engine: aurora-postgresql
+      EngineVersion: '16.15'
+      DatabaseName: vialservi
+      MasterUsername: vialservi
+      ManageMasterUserPassword: true
+      DBSubnetGroupName: !Ref GrupoSubredes
+      VpcSecurityGroupIds: [!Ref Seguridad]
+      StorageEncrypted: true
+      EnableHttpEndpoint: true
+      BackupRetentionPeriod: 7
+      DeletionProtection: true
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0
+        MaxCapacity: 2
+        SecondsUntilAutoPause: 300
+      Tags: [{Key: Name, Value: vialservi-aurora}]
+  Escritor:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: vialservi-aurora-escritor
+      DBClusterIdentifier: !Ref Cluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+Outputs:
+  ClusterArn:
+    Value: !GetAtt Cluster.DBClusterArn
+  SecretArn:
+    Value: !GetAtt Cluster.MasterUserSecret.SecretArn
+  Endpoint:
+    Value: !GetAtt Cluster.Endpoint.Address

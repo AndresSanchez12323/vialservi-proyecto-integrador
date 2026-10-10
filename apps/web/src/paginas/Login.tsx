@@ -68,6 +68,11 @@ export function Login() {
           <button className="boton w-full" disabled={cargando}>
             {cargando ? 'Entrando…' : 'Entrar'}
           </button>
+          {cargando && import.meta.env.PROD && (
+            <p role="status" className="text-xs text-slate-400">
+              Si el servicio estaba en pausa, el primer acceso puede tardar hasta un minuto.
+            </p>
+          )}
         </form>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-sm">
