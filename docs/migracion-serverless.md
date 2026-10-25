@@ -57,6 +57,16 @@ no una configuracion de alta disponibilidad con replica caliente.
 - `infra/desplegar-serverless.ps1`: redespliegues posteriores, solo si el corte
   ya esta activo. Verifica cuenta, exige pruebas contra base local, sube imagen
   inmutable y publica la interfaz sin borrar assets de pestanas abiertas.
+  Corre igual en PowerShell 7 (`pwsh`) y en Windows PowerShell 5.1, pero 5.1
+  obliga a tres cuidados que ya estan resueltos dentro del script y conviene
+  no deshacer: convierte en error la salida de progreso de docker y npm (por
+  eso se baja `ErrorActionPreference` mientras corre cada programa), corrompe
+  el token de ECR si la tuberia la hace PowerShell (por eso el login se delega
+  a `cmd`), y le quita las comillas a un programa pasado con `node -e` (por eso
+  la guarda de base local vive en `infra/verificar-base-local.mjs` y no
+  incrustada: incrustada moria de sintaxis sin llegar a comprobar nada).
+- `infra/verificar-base-local.mjs`: corta el despliegue si `DATABASE_URL` no es
+  local, antes de que las pruebas escriban. Las pruebas borran datos.
 - `infra/verificar-data-api.mjs`: comprobacion del adaptador sobre la copia
   previa al corte, incluyendo errores de unicidad y transacciones revertidas.
 - El rol del aplicativo tiene un **Deny explicito** sobre `migracion-aurora/*`:
