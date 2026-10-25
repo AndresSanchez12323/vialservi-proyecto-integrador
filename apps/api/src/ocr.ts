@@ -70,9 +70,17 @@ export const analizarTarjeta = async (clave: string): Promise<DatosTarjeta> => {
     }
     return { placa, marca, modelo, color };
   } finally {
-    await s3.send(new DeleteObjectCommand({
-      Bucket: config.S3_BUCKET_EVIDENCIAS,
-      Key: clave,
-    }));
+    // La foto lleva datos personales y no es evidencia del servicio, asi que
+    // se descarta siempre. Si el borrado falla se deja constancia en el log,
+    // pero no se tapa lo que el analisis devolvio: un fallo al limpiar no
+    // puede costarle al usuario el resultado, ni ocultar el error de verdad.
+    try {
+      await s3.send(new DeleteObjectCommand({
+        Bucket: config.S3_BUCKET_EVIDENCIAS,
+        Key: clave,
+      }));
+    } catch (fallo) {
+      console.error(`No se pudo borrar la tarjeta ${clave} tras analizarla:`, fallo);
+    }
   }
 };

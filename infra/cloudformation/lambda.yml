@@ -57,6 +57,13 @@ Resources:
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/*'
+              # Borrar SOLO las fotos de tarjetas que el propio OCR sube y
+              # descarta al terminar. El permiso se limita a ese prefijo a
+              # proposito: las evidencias del expediente son el soporte
+              # probatorio del servicio y nada en el aplicativo las borra.
+              - Effect: Allow
+                Action: s3:DeleteObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/ocr-tarjetas/*'
               - Effect: Allow
                 Action: textract:AnalyzeDocument
                 Resource: '*'
