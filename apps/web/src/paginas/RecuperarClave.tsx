@@ -13,6 +13,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { publico } from '../comun/api';
+import { avisoError, avisoExito } from '../comun/avisos';
 
 export function RecuperarClave() {
   const navegar = useNavigate();
@@ -21,22 +22,19 @@ export function RecuperarClave() {
   const [codigo, setCodigo] = useState('');
   const [nueva, setNueva] = useState('');
   const [confirmar, setConfirmar] = useState('');
-  const [aviso, setAviso] = useState('');
   const [codigoDemo, setCodigoDemo] = useState('');
-  const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
   const pedirCodigo = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setCargando(true);
     try {
       const r = await publico<{ mensaje: string; codigo?: string }>('/auth/recuperar', { documento });
-      setAviso(r.mensaje);
+      avisoExito(r.mensaje, 'Codigo enviado');
       if (r.codigo) setCodigoDemo(r.codigo);
       setPaso(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No fue posible solicitar el código');
+      avisoError(err, 'No fue posible solicitar el codigo');
     } finally {
       setCargando(false);
     }
@@ -44,13 +42,12 @@ export function RecuperarClave() {
 
   const confirmarCodigo = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setCargando(true);
     try {
       await publico('/auth/recuperar/confirmar', { documento, codigo, nuevaClave: nueva });
       navegar('/login', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No fue posible cambiar la contraseña');
+      avisoError(err, 'No fue posible cambiar la contrasena');
     } finally {
       setCargando(false);
     }
@@ -81,22 +78,12 @@ export function RecuperarClave() {
                 autoFocus
               />
             </div>
-            {error && (
-              <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                {error}
-              </p>
-            )}
             <button className="boton w-full" disabled={documento.trim().length < 5 || cargando}>
               {cargando ? 'Enviando…' : 'Enviar código'}
             </button>
           </form>
         ) : (
           <form onSubmit={confirmarCodigo} className="space-y-4">
-            {aviso && (
-              <p className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-200">
-                {aviso}
-              </p>
-            )}
             {codigoDemo && (
               <p className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
                 <span className="font-semibold">Modo desarrollo:</span> su código es{' '}
@@ -129,11 +116,6 @@ export function RecuperarClave() {
             )}
             {confirmar && nueva !== confirmar && (
               <p className="text-xs text-amber-200">Las contraseñas no coinciden.</p>
-            )}
-            {error && (
-              <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-                {error}
-              </p>
             )}
 
             <button className="boton w-full" disabled={!listoPaso2 || cargando}>

@@ -65,4 +65,58 @@
   .etiqueta {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
+
+  /* ── Avisos emergentes (SweetAlert2) ──────────────────────────────────
+     Heredan el lenguaje visual de la aplicacion para que no parezcan de otro
+     programa. El popup NO lleva transparencia: flota sobre el contenido y lo
+     de debajo se leeria a traves del texto (mismo motivo que .vidrio-flotante). */
+  .vs-popup {
+    @apply rounded-2xl border border-white/15 shadow-2xl;
+  }
+  .vs-titulo {
+    @apply text-lg font-semibold text-slate-100;
+  }
+  .vs-texto {
+    @apply text-sm text-slate-300;
+  }
+  .vs-acciones {
+    @apply gap-2;
+  }
+  .vs-boton {
+    @apply rounded-lg bg-amber-500/90 px-4 py-2 font-medium text-slate-900 shadow-lg
+           transition-colors hover:bg-amber-400;
+  }
+  .vs-boton-suave {
+    @apply rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm text-slate-100
+           transition-colors hover:bg-white/20;
+  }
+  .vs-boton-peligro {
+    @apply rounded-lg border border-rose-300/50 bg-rose-500/20 px-4 py-2 font-medium text-rose-100
+           transition-colors hover:bg-rose-500/30;
+  }
+  .vs-progreso {
+    @apply !bg-amber-400/70;
+  }
+  .vs-toast {
+    @apply border border-white/15;
+  }
+}
+
+/* La entrada da el golpe de vista; la salida se quita de en medio rapido.
+   Fuera de @layer para que no compita con las utilidades de Tailwind. */
+@keyframes vs-entra {
+  from { opacity: 0; transform: translateY(-12px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes vs-sale {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+.vs-entra { animation: vs-entra 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+.vs-sale  { animation: vs-sale 0.15s ease-in forwards; }
+
+/* Quien pidio menos movimiento recibe el aviso igual, sin el desplazamiento:
+   para algunas personas esas animaciones producen mareo. */
+@media (prefers-reduced-motion: reduce) {
+  .vs-entra, .vs-sale { animation: none; }
 }

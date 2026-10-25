@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { enviar, pedir, type Bandeja, type Notificacion } from './api';
 import { NOTIFICACIONES, haceCuanto } from './formato';
+import { avisoError } from './avisos';
 
 export function Notificaciones() {
   const navegar = useNavigate();
@@ -42,14 +43,19 @@ export function Notificaciones() {
     cola.invalidateQueries({ queryKey: ['servicios'] });
   };
 
+  // Marcar como leida no lleva acuse emergente: el cambio se ve al momento en
+  // la propia lista, y un aviso por cada clic seria puro ruido. Si FALLA si se
+  // avisa, porque entonces lo que se ve en pantalla no es lo que quedo guardado.
   const marcar = useMutation({
     mutationFn: (id: number) => enviar(`/notificaciones/${id}/leida`, 'PATCH'),
     onSuccess: refrescar,
+    onError: (e) => avisoError(e, 'No se pudo marcar como leida'),
   });
 
   const marcarTodas = useMutation({
     mutationFn: () => enviar('/notificaciones/leidas', 'PATCH'),
     onSuccess: refrescar,
+    onError: (e) => avisoError(e, 'No se pudieron marcar como leidas'),
   });
 
   const sinLeer = data?.sinLeer ?? 0;

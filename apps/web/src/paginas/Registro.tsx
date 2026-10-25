@@ -7,13 +7,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { publico, sesion, type Sesion } from '../comun/api';
+import { avisoError } from '../comun/avisos';
 
 export function Registro() {
   const navegar = useNavigate();
   const [form, setForm] = useState({
     documento: '', nombre: '', correo: '', telefono: '', clave: '', confirmar: '',
   });
-  const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
   const cambiar = (campo: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -36,7 +36,6 @@ export function Registro() {
 
   const registrar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setCargando(true);
     try {
       const r = await publico<{ token: string; usuario: Sesion; enlazadoAFichaExistente: boolean }>(
@@ -54,7 +53,7 @@ export function Registro() {
       sesion.guardar(r.token, r.usuario);
       navegar('/vehiculos');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No fue posible crear la cuenta');
+      avisoError(err, 'No fue posible crear la cuenta');
     } finally {
       setCargando(false);
     }
@@ -127,11 +126,6 @@ export function Registro() {
             <ul className="space-y-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
               {problemas.map((p) => <li key={p}>• {p}</li>)}
             </ul>
-          )}
-          {error && (
-            <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {error}
-            </p>
           )}
 
           <button className="boton w-full" disabled={!completo || cargando}>

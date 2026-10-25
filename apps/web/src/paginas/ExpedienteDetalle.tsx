@@ -7,6 +7,7 @@ import { Mapa } from '../comun/Mapa';
 import { SubirEvidencia } from '../comun/SubirEvidencia';
 import { VistaEvidencia } from '../comun/VistaEvidencia';
 import { CATEGORIAS, ESTADOS, TIPOS, fecha, haceCuanto } from '../comun/formato';
+import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 const idLocal = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -50,7 +51,11 @@ function Verificacion({
         // borraria datos que ya estuvieran guardados.
         vehiculo: Object.fromEntries(Object.entries(doc).filter(([, val]) => val.trim() !== '')),
       }),
-    onSuccess: alTerminar,
+    onSuccess: () => {
+      avisoExito('Quedo registrado quien entrega el vehiculo.', 'Verificacion guardada');
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo guardar la verificacion'),
   });
 
   const faltanDatos = esPropietario === false && (nombre.trim().length < 3 || documento.trim().length < 5);
@@ -153,7 +158,6 @@ function Verificacion({
         </div>
       </details>
 
-      {guardar.error && <p className="mt-3 text-sm text-rose-300">{(guardar.error as Error).message}</p>}
       {faltanDatos && (
         <p className="mt-3 text-xs text-amber-200">
           Si no es el propietario, el nombre y el documento de quien entrega son obligatorios.
@@ -203,8 +207,10 @@ function Inventario({
     onSuccess: () => {
       setDescripcion('');
       setCantidad('1');
+      avisoExito('El objeto quedo en el inventario del vehiculo.', 'Objeto agregado');
       alTerminar();
     },
+    onError: (e) => avisoError(e, 'No se pudo agregar el objeto'),
   });
 
   if (!puedeEditar) return null;
@@ -235,9 +241,6 @@ function Inventario({
           aria-label="Cantidad"
         />
       </div>
-      {agregar.error && (
-        <p className="text-xs text-rose-300">{(agregar.error as Error).message}</p>
-      )}
       <button
         className="boton-suave w-full sm:w-auto"
         disabled={descripcion.trim().length < 3 || agregar.isPending}
@@ -284,32 +287,69 @@ export function ExpedienteDetalle() {
         observaciones: texto,
         version: (data?.observacionesVersion ?? 0) + 1,
       }),
-    onSuccess: refrescar,
+    onSuccess: () => { avisoExito('Las observaciones quedaron guardadas.'); refrescar(); },
+    onError: (e) => avisoError(e, 'No se pudieron guardar las observaciones'),
   });
 
   const agregarNovedad = useMutation({
     mutationFn: () =>
       enviar(`/expedientes/${id}/novedades`, 'POST', { idLocal: idLocal(), descripcion: novedad }),
-    onSuccess: () => { setNovedad(''); refrescar(); },
+    onSuccess: () => {
+      setNovedad('');
+      avisoExito('La novedad quedo en el expediente, con su fecha y responsable.', 'Novedad registrada');
+      refrescar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo registrar la novedad'),
   });
 
   const guardarRevision = useMutation({
     mutationFn: () => enviar(`/expedientes/${id}/revision`, 'PATCH', { revisionCentral: revision }),
-    onSuccess: refrescar,
+    onSuccess: () => { avisoExito('La revision de la central quedo guardada.'); refrescar(); },
+    onError: (e) => avisoError(e, 'No se pudo guardar la revision'),
   });
 
   const cerrar = useMutation({
     mutationFn: () => enviar(`/expedientes/${id}/cerrar`, 'POST'),
-    onSuccess: refrescar,
+    onSuccess: () => {
+      avisoExito('El expediente quedo cerrado y pasa a consulta.', 'Expediente cerrado');
+      refrescar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo cerrar el expediente'),
   });
+
+  /** Cerrar no se deshace: a partir de aqui el expediente es historial. */
+  const pedirCierre = async () => {
+    const seguro = await confirmar({
+      titulo: '¿Cerrar el expediente?',
+      texto: 'Despues del cierre no se modifica lo ya registrado. Lo que se agregue luego queda marcado como posterior al cierre, con su fecha y responsable.',
+      confirmar: 'Si, cerrar',
+      cancelar: 'Revisar otra vez',
+    });
+    if (seguro) cerrar.mutate();
+  };
 
   // Marcar terminado vive tambien aqui adentro, no solo en la lista de
   // servicios: el tecnico diligencia el expediente en esta pagina y no
   // deberia salir a buscar el boton a otra parte.
   const terminar = useMutation({
     mutationFn: () => enviar(`/servicios/${s?.id}/estado`, 'PATCH', { estado: 'TERMINADO' }),
-    onSuccess: refrescar,
+    onSuccess: () => {
+      avisoExito('La central recibio el aviso y revisara el expediente.', 'Servicio terminado');
+      refrescar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo marcar como terminado'),
   });
+
+  const pedirTerminar = async () => {
+    const seguro = await confirmar({
+      titulo: '¿Marcar el servicio como terminado?',
+      texto: 'La central recibira el aviso para revisar el expediente y cerrarlo. Compruebe que subio todas las evidencias del formato.',
+      confirmar: 'Si, terminar',
+      cancelar: 'Todavia no',
+      peligro: false,
+    });
+    if (seguro) terminar.mutate();
+  };
 
   if (isLoading) return <p className="text-sm text-slate-400">Cargando expediente…</p>;
   if (error) return <p className="text-sm text-rose-300">{(error as Error).message}</p>;
@@ -473,15 +513,10 @@ export function ExpedienteDetalle() {
               central para que revise y cierre el expediente.
             </p>
           )}
-          {terminar.error && (
-            <p className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {(terminar.error as Error).message}
-            </p>
-          )}
           <button
             className="boton mt-4"
             disabled={faltanParaTerminar.length > 0 || terminar.isPending}
-            onClick={() => terminar.mutate()}
+            onClick={pedirTerminar}
             title={
               faltanParaTerminar.length > 0
                 ? 'Suba primero las evidencias que faltan'
@@ -664,17 +699,11 @@ export function ExpedienteDetalle() {
             Guardar nota de revisión
           </button>
 
-          {cerrar.error && (
-            <p className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {(cerrar.error as Error).message}
-            </p>
-          )}
-
           <div className="mt-4">
             <button
               className="boton"
               disabled={cerrado || cerrar.isPending || !control.listoParaCerrar}
-              onClick={() => cerrar.mutate()}
+              onClick={pedirCierre}
               title={control.listoParaCerrar ? 'Cerrar el expediente' : 'Faltan requisitos del formato'}
             >
               {cerrado ? `Cerrado el ${fecha(data.cerradoEn)}` : 'Cerrar expediente'}

@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { pedir, sesion, type Sesion } from '../comun/api';
 import { inicioPorRol } from '../comun/Atras';
 import { Logo } from '../comun/Logo';
+import { avisoError } from '../comun/avisos';
 
 const DEMO = [
   { doc: '2001', quien: 'Central de Operaciones' },
@@ -15,7 +16,6 @@ export function Login() {
   const navegar = useNavigate();
   const [documento, setDocumento] = useState('');
   const [clave, setClave] = useState('VialServi2026');
-  const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
   // Con sesión válida no hay login que mostrar: de vuelta a la app.
@@ -24,7 +24,6 @@ export function Login() {
 
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setCargando(true);
     try {
       const r = await pedir<{ token: string; usuario: Sesion }>('/auth/login', {
@@ -34,7 +33,7 @@ export function Login() {
       sesion.guardar(r.token, r.usuario);
       navegar(r.usuario.rol === 'TECNICO' || r.usuario.rol === 'CLIENTE' ? '/servicios' : '/panel');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No fue posible iniciar sesión');
+      avisoError(err, 'No fue posible iniciar sesion');
     } finally {
       setCargando(false);
     }
@@ -59,11 +58,6 @@ export function Login() {
             <input type="password" value={clave} onChange={(e) => setClave(e.target.value)} className="campo" />
           </div>
 
-          {error && (
-            <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {error}
-            </p>
-          )}
 
           <button className="boton w-full" disabled={cargando}>
             {cargando ? 'Entrando…' : 'Entrar'}

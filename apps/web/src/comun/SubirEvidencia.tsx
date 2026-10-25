@@ -7,6 +7,7 @@
  */
 import { useRef, useState } from 'react';
 import { LIMITES, SEGUNDOS_MAX_VIDEO, revisarArchivo, subirEvidencia, type Progreso } from './subida';
+import { avisoError, avisoExito } from './avisos';
 
 const TEXTO: Record<Progreso, string> = {
   firmando: 'Preparando…',
@@ -24,27 +25,26 @@ export function SubirEvidencia({
   alSubir: () => void;
 }) {
   const [paso, setPaso] = useState<Progreso | null>(null);
-  const [error, setError] = useState('');
   const foto = useRef<HTMLInputElement>(null);
   const video = useRef<HTMLInputElement>(null);
 
   const manejar = async (archivo: File | undefined, tipo: 'FOTO' | 'VIDEO') => {
     if (!archivo) return;
-    setError('');
 
     // Se revisa ANTES de pedir la URL: no tiene sentido firmar una subida que
     // el servidor va a rechazar por peso o por duracion.
     const problema = await revisarArchivo(archivo, tipo);
     if (problema) {
-      setError(problema);
+      avisoError(problema, 'Ese archivo no sirve como evidencia');
       return;
     }
 
     try {
       await subirEvidencia({ expedienteId, tipo, categoria, archivo, alAvanzar: setPaso });
+      avisoExito('Quedo en el expediente, con su autor y su fecha.', 'Evidencia subida');
       alSubir();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No fue posible subir la evidencia');
+      avisoError(e, 'No fue posible subir la evidencia');
     } finally {
       setPaso(null);
       // Se limpia el input para que elegir el MISMO archivo otra vez vuelva a
@@ -85,11 +85,6 @@ export function SubirEvidencia({
         {ocupado && <span className="text-xs text-amber-200">{TEXTO[paso]}</span>}
       </div>
 
-      {error && (
-        <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-          {error}
-        </p>
-      )}
 
       <p className="text-[11px] text-slate-500">
         Fotografía hasta {LIMITES.FOTO.etiqueta} · video hasta {LIMITES.VIDEO.etiqueta} y{' '}

@@ -9,6 +9,7 @@ import { direccionDesdePunto, Mapa, ubicacionActual, type Punto } from '../comun
 import {
   ESTADOS, ESTADOS_CLIENTE, PASOS, PASOS_CORTOS, TIPOS, fecha, haceCuanto, pasoDe,
 } from '../comun/formato';
+import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 /** Especialidad que exige cada tipo de servicio. */
 const especialidadDe = (tipo: string) =>
@@ -96,7 +97,14 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
 
   const mutar = useMutation({
     mutationFn: () => enviar(`/servicios/${servicio.id}/clasificar`, 'PATCH', { tipo, tecnicoId }),
-    onSuccess: alTerminar,
+    onSuccess: () => {
+      avisoExito('Se abrio el expediente y el tecnico ya tiene el servicio asignado.', 'Servicio asignado');
+      alTerminar();
+    },
+    // Aqui cae el aviso de que el tecnico ya tiene trabajo activo: es la
+    // razon mas comun por la que una asignacion no sale, y conviene que
+    // interrumpa en vez de quedar como una linea de texto bajo el boton.
+    onError: (e) => avisoError(e, 'No se pudo asignar'),
   });
 
   const requerida = especialidadDe(tipo);
@@ -215,7 +223,6 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
         </ul>
       </div>
 
-      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
 
       <button className="boton" disabled={!tecnicoId || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Asignando…' : 'Asignar y abrir expediente'}
@@ -236,12 +243,31 @@ function ConMotivo({
   alTerminar: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
+  const esRechazo = accion === 'rechazar';
+
   const mutar = useMutation({
     mutationFn: () => enviar(`/servicios/${servicio.id}/${accion}`, 'PATCH', { motivo }),
-    onSuccess: alTerminar,
+    onSuccess: () => {
+      avisoExito(
+        esRechazo ? 'La solicitud quedo registrada como no aceptada, con su motivo.'
+                  : 'El servicio quedo cancelado, con su motivo.',
+        esRechazo ? 'Solicitud rechazada' : 'Servicio cancelado',
+      );
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, esRechazo ? 'No se pudo rechazar' : 'No se pudo cancelar'),
   });
 
-  const esRechazo = accion === 'rechazar';
+  // Ni el rechazo ni la cancelacion se deshacen: se confirman antes.
+  const pedirConfirmacion = async () => {
+    const seguro = await confirmar({
+      titulo: esRechazo ? '¿No aceptar esta solicitud?' : '¿Cancelar este servicio?',
+      texto: `Quedara registrado con el motivo: "${motivo}". Esta accion no se puede deshacer.`,
+      confirmar: esRechazo ? 'Si, rechazar' : 'Si, cancelar el servicio',
+      cancelar: 'Volver',
+    });
+    if (seguro) mutar.mutate();
+  };
 
   return (
     <div className="vidrio-suave mt-3 space-y-2 p-4">
@@ -257,8 +283,7 @@ function ConMotivo({
         className="campo"
         placeholder={esRechazo ? 'Motivo del rechazo' : 'Motivo de la cancelación'}
       />
-      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
-      <button className="boton-suave" disabled={motivo.length < 5 || mutar.isPending} onClick={() => mutar.mutate()}>
+      <button className="boton-suave" disabled={motivo.length < 5 || mutar.isPending} onClick={pedirConfirmacion}>
         {esRechazo ? 'Confirmar rechazo' : 'Confirmar cancelación'}
       </button>
     </div>
@@ -358,7 +383,6 @@ function SeguimientoCliente({ servicio }: { servicio: Servicio }) {
 /** Acciones del tecnico en campo: ubicacion, tiempo de llegada y avance. */
 function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTerminar: () => void }) {
   const [minutos, setMinutos] = useState(String(servicio.etaMinutos ?? ''));
-  const [aviso, setAviso] = useState('');
 
   const informar = useMutation({
     mutationFn: async () => {
@@ -371,12 +395,26 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
         ...(p ?? {}),
       });
     },
-    onSuccess: () => { setAviso('Tiempo informado al cliente.'); alTerminar(); },
+    onSuccess: () => {
+      avisoExito('El cliente ya ve su tiempo de llegada y su posicion.', 'Tiempo informado');
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo informar el tiempo'),
   });
 
   const avanzar = useMutation({
     mutationFn: (estado: string) => enviar(`/servicios/${servicio.id}/estado`, 'PATCH', { estado }),
-    onSuccess: alTerminar,
+    onSuccess: (_d, estado) => {
+      avisoExito(
+        estado === 'TERMINADO'
+          ? 'La central recibio el aviso y revisara el expediente para cerrarlo.'
+          : 'Quedo registrado que ya esta atendiendo el servicio.',
+        estado === 'TERMINADO' ? 'Servicio terminado' : 'Atencion iniciada',
+      );
+      alTerminar();
+    },
+    // Si faltan evidencias del formato, el servidor lo rechaza aqui.
+    onError: (e) => avisoError(e, 'No se pudo avanzar el servicio'),
   });
 
   // Lo que falta para cerrar, sin contar la marca de terminado: si faltan
@@ -418,14 +456,6 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
             {informar.isPending ? 'Enviando…' : 'Informar al cliente'}
           </button>
         </div>
-      )}
-
-      {aviso && <p className="text-xs text-emerald-300">{aviso}</p>}
-      {informar.error && <p className="text-xs text-rose-300">{(informar.error as Error).message}</p>}
-      {avanzar.error && (
-        <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-          {(avanzar.error as Error).message}
-        </p>
       )}
 
       {servicio.estado === 'EN_EJECUCION' && faltanFotos.length > 0 && (
@@ -545,6 +575,7 @@ function Solicitar({
         ...(punto ?? {}),
       }),
     onSuccess: alTerminar,
+    onError: (e) => avisoError(e, 'No se pudo enviar la solicitud'),
   });
 
   const completo =
@@ -638,7 +669,6 @@ function Solicitar({
         alObtenerUbicacion={completarDireccion}
       />
 
-      {mutar.error && <p className="text-sm text-rose-300">{(mutar.error as Error).message}</p>}
 
       <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Enviando…' : 'Enviar solicitud a la central'}
@@ -660,7 +690,6 @@ export function Servicios() {
   const [conMotivo, setConMotivo] = useState<{ id: number; accion: 'cancelar' | 'rechazar' } | null>(null);
   const vehiculoIdInicial = esCliente ? parametros.get('vehiculoId') ?? undefined : undefined;
   const [solicitando, setSolicitando] = useState(Boolean(vehiculoIdInicial));
-  const [ok, setOk] = useState('');
   // Punto que el tecnico marca en el mapa cuando el equipo no puede ubicarse.
   const [manual, setManual] = useState<Punto | null>(null);
   const [pestana, setPestana] = useState<'pendientes' | 'progreso' | 'historial'>('pendientes');
@@ -682,10 +711,17 @@ export function Servicios() {
   const cambiarDisponibilidad = useMutation({
     mutationFn: (disponible: boolean) =>
       enviar<Tecnico>('/tecnicos/yo/disponibilidad', 'PATCH', { disponible }),
-    onSuccess: () => {
+    onSuccess: (_d, disponible) => {
+      avisoExito(
+        disponible
+          ? 'La central ya lo ve libre para asignarle un servicio.'
+          : 'La central ya lo ve ocupado y no le asignara servicios.',
+        disponible ? 'Disponible' : 'Ocupado',
+      );
       cola.invalidateQueries({ queryKey: ['tecnicoYo'] });
       cola.invalidateQueries({ queryKey: ['tecnicos'] });
     },
+    onError: (e) => avisoError(e, 'No se pudo cambiar la disponibilidad'),
   });
 
   const reportarUbicacion = useMutation({
@@ -702,10 +738,11 @@ export function Servicios() {
       return enviar('/tecnicos/yo/ubicacion', 'PATCH', punto);
     },
     onSuccess: () => {
-      setOk('Ubicación actualizada. La central y el cliente ya la ven.');
+      avisoExito('La central y el cliente ya ven su posicion.', 'Ubicacion actualizada');
       cola.invalidateQueries({ queryKey: ['tecnicoYo'] });
       cola.invalidateQueries({ queryKey: ['servicios'] });
     },
+    onError: (e) => avisoError(e, 'No se pudo reportar la ubicacion'),
   });
 
   const refrescar = () => {
@@ -759,7 +796,7 @@ export function Servicios() {
             <button
               className="boton-suave"
               disabled={reportarUbicacion.isPending}
-              onClick={() => { setOk(''); reportarUbicacion.mutate(undefined); }}
+              onClick={() => reportarUbicacion.mutate(undefined)}
               title="La central la usa para enviarle el servicio más cercano"
             >
               {reportarUbicacion.isPending ? 'Ubicando…' : '📍 Reportar mi ubicación'}
@@ -775,13 +812,13 @@ export function Servicios() {
         </section>
       )}
 
+      {/* No es un mensaje de error: es la salida cuando el equipo no logra
+          ubicarse. El fallo se avisa en emergente; esto se queda en la pagina
+          porque el tecnico tiene que poder marcar el punto en el mapa. */}
       {reportarUbicacion.error && (
         <section className="vidrio space-y-3 p-5">
-          <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-            {(reportarUbicacion.error as Error).message}
-          </p>
           <div>
-            <p className="text-sm font-medium">Marcarla a mano</p>
+            <p className="text-sm font-medium">No pudimos ubicarlo: marquelo a mano</p>
             <p className="mb-2 text-xs text-slate-400">
               Pulse el mapa donde está. Una posición aproximada sirve: se usa para calcular
               a qué distancia queda de cada servicio.
@@ -792,7 +829,7 @@ export function Servicios() {
             <button
               className="boton"
               disabled={!manual || reportarUbicacion.isPending}
-              onClick={() => { setOk(''); if (manual) reportarUbicacion.mutate(manual); }}
+              onClick={() => { if (manual) reportarUbicacion.mutate(manual); }}
             >
               Reportar este punto
             </button>
@@ -837,7 +874,7 @@ export function Servicios() {
 
       {(esCliente || esCentral) && (
         <div className="space-y-3">
-          <button className="boton" onClick={() => { setSolicitando(!solicitando); setOk(''); }}>
+          <button className="boton" onClick={() => setSolicitando(!solicitando)}>
             {solicitando
               ? 'Cerrar formulario'
               : esCentral ? 'Solicitar servicio (llamada del cliente)' : '+ Solicitar nuevo servicio'}
@@ -847,7 +884,7 @@ export function Servicios() {
               vehiculoIdInicial={vehiculoIdInicial}
               alTerminar={() => {
                 setSolicitando(false);
-                setOk('Solicitud enviada. La central la está verificando y le asignará un técnico.');
+                avisoExito('La central la esta verificando y le asignara un tecnico.', 'Solicitud enviada');
                 refrescar();
               }}
             />
@@ -855,11 +892,6 @@ export function Servicios() {
         </div>
       )}
 
-      {ok && (
-        <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-          {ok}
-        </p>
-      )}
 
       {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
       {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}

@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { enviar, leerTarjeta, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
 import { MAX_VEHICULOS_CLIENTE } from '../comun/formato';
+import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 type ClienteYo = Cliente & { vehiculos: Vehiculo[] };
 
 function LeerTarjeta({ alLeer }: { alLeer: (datos: DatosTarjeta) => void }) {
   const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState('');
 
   return (
     <div className="space-y-2 sm:col-span-2">
@@ -22,12 +22,12 @@ function LeerTarjeta({ alLeer }: { alLeer: (datos: DatosTarjeta) => void }) {
           const archivo = e.target.files?.[0];
           e.target.value = '';
           if (!archivo) return;
-          setError('');
           setCargando(true);
           try {
             alLeer(await leerTarjeta(archivo));
+            avisoExito('Revise los datos y corrija lo que haga falta antes de guardar.', 'Tarjeta leida');
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'No se pudo leer la tarjeta.');
+            avisoError(e, 'No se pudo leer la tarjeta');
           } finally {
             setCargando(false);
           }
@@ -39,7 +39,6 @@ function LeerTarjeta({ alLeer }: { alLeer: (datos: DatosTarjeta) => void }) {
       <p className="text-xs text-slate-400">
         La foto se procesa con Amazon Textract y los datos quedan editables antes de guardar.
       </p>
-      {error && <p className="text-sm text-rose-300">{error}</p>}
     </div>
   );
 }
@@ -71,11 +70,15 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
 
   const mutar = useMutation({
     mutationFn: () =>
-      enviar('/vehiculos', 'POST', {
+      enviar<Vehiculo>('/vehiculos', 'POST', {
         placa, marca, modelo, color,
         ...(esCentral ? { clienteId } : {}),
       }),
-    onSuccess: alTerminar,
+    onSuccess: (v) => {
+      avisoExito(`${v.placa} quedo registrado y ya se puede usar en un servicio.`, 'Vehiculo registrado');
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo registrar el vehiculo'),
   });
 
   const completo =
@@ -117,8 +120,6 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         <input value={color} onChange={(e) => setColor(e.target.value)} className="campo" placeholder="Color" />
       </div>
 
-      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
-
       <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Guardando…' : 'Registrar vehículo'}
       </button>
@@ -133,8 +134,6 @@ export function Vehiculos() {
   const esCliente = rol === 'CLIENTE';
   const [placa, setPlaca] = useState('');
   const [registrando, setRegistrando] = useState(false);
-  const [ok, setOk] = useState('');
-  const [vehiculoAEliminar, setVehiculoAEliminar] = useState<Vehiculo | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['vehiculos', placa],
@@ -159,21 +158,41 @@ export function Vehiculos() {
 
   const crearVehiculo = useMutation({
     mutationFn: () => enviar<Vehiculo>('/vehiculos', 'POST', { ...formV, clienteId: yo?.id }),
-    onSuccess: (v) => {
+    onSuccess: async (v) => {
       setFormV({ placa: '', marca: '', modelo: '', color: '' });
-      setOk(`Vehículo ${v.placa} agregado. Ya puede solicitar un servicio para este.`);
       refrescar();
+      // Registrar un vehiculo casi siempre es el paso previo a pedir algo,
+      // asi que se ofrece el atajo en vez de dejarlo buscar el formulario.
+      const ir = await confirmar({
+        titulo: `${v.placa} quedo registrado`,
+        texto: '¿Quiere solicitar un servicio para este vehiculo ahora?',
+        confirmar: 'Solicitar servicio',
+        cancelar: 'Mas tarde',
+        peligro: false,
+      });
+      if (ir) navegar(`/servicios?vehiculoId=${v.id}`);
     },
+    onError: (e) => avisoError(e, 'No se pudo agregar el vehiculo'),
   });
 
+  /** Borrar no se deshace: se pregunta antes y el foco arranca en Cancelar. */
   const eliminarVehiculo = useMutation({
     mutationFn: (id: number) => enviar(`/vehiculos/${id}`, 'DELETE'),
     onSuccess: () => {
-      setVehiculoAEliminar(null);
-      setOk(`Vehículo eliminado.`);
+      avisoExito('El vehiculo se quito de su cuenta.', 'Vehiculo eliminado');
       refrescar();
     },
+    onError: (e) => avisoError(e, 'No se pudo eliminar'),
   });
+
+  const pedirEliminar = async (v: Vehiculo) => {
+    const seguro = await confirmar({
+      titulo: `¿Eliminar ${v.placa}?`,
+      texto: `${v.marca} ${v.modelo}. Esta accion no se puede deshacer, y solo es posible si el vehiculo no tiene expedientes ni servicios abiertos.`,
+      confirmar: 'Si, eliminar',
+    });
+    if (seguro) eliminarVehiculo.mutate(v.id);
+  };
 
   const cuantos = yo?.vehiculos.length ?? 0;
   const enElTope = cuantos >= MAX_VEHICULOS_CLIENTE;
@@ -218,27 +237,19 @@ export function Vehiculos() {
                 No le pedimos el VIN ni el número de la tarjeta de propiedad: esos datos los
                 toma el técnico en el sitio, con el documento en la mano.
               </p>
-              {crearVehiculo.error && <p className="text-sm text-rose-300">{(crearVehiculo.error as Error).message}</p>}
               <button
                 className="boton"
                 disabled={
                   crearVehiculo.isPending || formV.placa.length < 5 || formV.marca.length < 2 ||
                   formV.modelo.length < 2 || formV.color.length < 3
                 }
-                onClick={() => { setOk(''); crearVehiculo.mutate(); }}
+                onClick={() => crearVehiculo.mutate()}
               >
                 {crearVehiculo.isPending ? 'Agregando…' : 'Agregar vehículo'}
               </button>
             </>
           )}
         </section>
-      )}
-
-      {ok && (
-        <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-          {ok}{' '}
-          <Link to="/servicios" className="underline hover:text-emerald-100">Solicitar el servicio →</Link>
-        </p>
       )}
 
       {!esCliente && (
@@ -293,10 +304,7 @@ export function Vehiculos() {
                 <button
                   className="w-full rounded-lg border border-rose-400/30 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/10 disabled:opacity-50"
                   disabled={eliminarVehiculo.isPending}
-                  onClick={() => {
-                    eliminarVehiculo.reset();
-                    setVehiculoAEliminar(v);
-                  }}
+                  onClick={() => pedirEliminar(v)}
                 >
                   {eliminarVehiculo.isPending ? 'Eliminando…' : 'Eliminar vehículo'}
                 </button>
@@ -312,66 +320,6 @@ export function Vehiculos() {
         {data?.length === 0 && <p className="text-sm text-slate-400">Sin resultados.</p>}
       </div>
 
-      {vehiculoAEliminar && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm"
-          role="presentation"
-          onClick={() => { if (!eliminarVehiculo.isPending) setVehiculoAEliminar(null); }}
-        >
-          <div
-            className="vidrio w-full max-w-md space-y-4 border border-white/15 p-6 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="titulo-eliminar-vehiculo"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div>
-              <p className="text-xs uppercase tracking-wide text-rose-300">Eliminar vehículo</p>
-              <h3 id="titulo-eliminar-vehiculo" className="mt-1 text-lg font-semibold text-white">
-                ¿Eliminar {vehiculoAEliminar.placa}?
-              </h3>
-              <p className="mt-2 text-sm text-slate-300">
-                Esta acción solo es posible si el vehículo no tiene expedientes ni servicios abiertos.
-              </p>
-            </div>
-
-            {eliminarVehiculo.error && (
-              <p className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200" role="alert">
-                {(eliminarVehiculo.error as Error).message}
-              </p>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="boton-suave"
-                disabled={eliminarVehiculo.isPending}
-                onClick={() => setVehiculoAEliminar(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-rose-300/50 bg-rose-500/20 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-50"
-                disabled={eliminarVehiculo.isPending}
-                onClick={() => {
-                  if (eliminarVehiculo.error) {
-                    setVehiculoAEliminar(null);
-                  } else {
-                    eliminarVehiculo.mutate(vehiculoAEliminar.id);
-                  }
-                }}
-              >
-                {eliminarVehiculo.error
-                  ? 'Aceptar'
-                  : eliminarVehiculo.isPending
-                    ? 'Eliminando…'
-                    : 'Sí, eliminar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
