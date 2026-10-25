@@ -26,7 +26,7 @@
  * URL de lectura de pocos minutos. Las fotos de una cedula con firma no pueden
  * quedar accesibles con solo adivinar la direccion.
  */
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from './config.js';
 
@@ -146,6 +146,29 @@ export const urlDeLectura = async (clave: string): Promise<string | null> => {
 };
 
 export const almacenamientoActivo = () => config.ALMACENAMIENTO_MODO === 's3';
+
+export const urlDeSubidaTarjeta = async (id: string): Promise<Subida> => {
+  if (config.OCR_MODO !== 'aws' || config.ALMACENAMIENTO_MODO !== 's3') {
+    return { clave: '', url: null, expiraEn: 0, modo: 'local', encabezados: {} };
+  }
+  const clave = `ocr-tarjetas/${id}.jpg`;
+  const expiraEn = config.S3_URL_MINUTOS * 60;
+  const url = await getSignedUrl(
+    cliente(),
+    new PutObjectCommand({
+      Bucket: config.S3_BUCKET_EVIDENCIAS!,
+      Key: clave,
+      ContentType: 'image/jpeg',
+    }),
+    { expiresIn: expiraEn },
+  );
+  return { clave, url, expiraEn, modo: 's3', encabezados: { 'Content-Type': 'image/jpeg' } };
+};
+
+export const eliminarObjeto = async (clave: string) => {
+  if (config.ALMACENAMIENTO_MODO !== 's3') return;
+  await cliente().send(new DeleteObjectCommand({ Bucket: config.S3_BUCKET_EVIDENCIAS!, Key: clave }));
+};
 
 // ── Limites de los archivos ──────────────────────────────────────────────
 // Son los del Alcance del proyecto: 5 MB por fotografia y 15 MB por clip.

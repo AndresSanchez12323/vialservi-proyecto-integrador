@@ -58,6 +58,9 @@ Resources:
                 Action: [s3:GetObject, s3:PutObject]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/*'
               - Effect: Allow
+                Action: textract:AnalyzeDocument
+                Resource: '*'
+              - Effect: Allow
                 Action: ses:SendEmail
                 Resource: !Sub 'arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
               - Effect: Allow

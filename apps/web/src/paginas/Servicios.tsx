@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   enviar, pedir, sesion,
   type Cliente, type Servicio, type Tablero, type Tecnico, type Vehiculo,
 } from '../comun/api';
-import { Mapa, ubicacionActual, type Punto } from '../comun/Mapa';
+import { direccionDesdePunto, Mapa, ubicacionActual, type Punto } from '../comun/Mapa';
 import {
   ESTADOS, ESTADOS_CLIENTE, PASOS, PASOS_CORTOS, TIPOS, fecha, haceCuanto, pasoDe,
 } from '../comun/formato';
@@ -23,9 +23,11 @@ const especialidadDe = (tipo: string) =>
 function SelectorUbicacion({
   punto,
   alCambiar,
+  alObtenerUbicacion,
 }: {
   punto: Punto | null;
   alCambiar: (p: Punto | null) => void;
+  alObtenerUbicacion?: (p: Punto) => void | Promise<void>;
 }) {
   const [buscando, setBuscando] = useState(false);
   const [motivo, setMotivo] = useState('');
@@ -34,7 +36,10 @@ function SelectorUbicacion({
     setBuscando(true);
     setMotivo('');
     const r = await ubicacionActual();
-    if (r.punto) alCambiar(r.punto);
+    if (r.punto) {
+      alCambiar(r.punto);
+      await alObtenerUbicacion?.(r.punto);
+    }
     else setMotivo(r.error);
     setBuscando(false);
   };
@@ -489,15 +494,30 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
 
 // ─────────────────────────────────────────────────────────────────────────
 /** Solicitud del servicio: la hace el cliente, o la central por telefono. */
-function Solicitar({ alTerminar }: { alTerminar: () => void }) {
+function Solicitar({
+  alTerminar,
+  vehiculoIdInicial,
+}: {
+  alTerminar: () => void;
+  vehiculoIdInicial?: string;
+}) {
   const rol = sesion.rol();
   const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
 
   const [clienteId, setClienteId] = useState('');
   const [form, setForm] = useState({
-    vehiculoId: '', tipoSolicitado: 'CARRO_TALLER', direccion: '', descripcion: '', contactoTelefono: '',
+    vehiculoId: vehiculoIdInicial ?? '',
+    tipoSolicitado: 'CARRO_TALLER', direccion: '', descripcion: '', contactoTelefono: '',
   });
   const [punto, setPunto] = useState<Punto | null>(null);
+
+  const completarDireccion = async (ubicacion: Punto) => {
+    const direccion = await direccionDesdePunto(ubicacion);
+    setForm((anterior) => ({
+      ...anterior,
+      direccion: direccion ?? `${ubicacion.lat.toFixed(6)}, ${ubicacion.lng.toFixed(6)}`,
+    }));
+  };
 
   const { data: clientes } = useQuery({
     queryKey: ['clientes'],
@@ -612,7 +632,11 @@ function Solicitar({ alTerminar }: { alTerminar: () => void }) {
         placeholder="Teléfono de contacto (opcional: si no, usamos el de su ficha)"
       />
 
-      <SelectorUbicacion punto={punto} alCambiar={setPunto} />
+      <SelectorUbicacion
+        punto={punto}
+        alCambiar={setPunto}
+        alObtenerUbicacion={completarDireccion}
+      />
 
       {mutar.error && <p className="text-sm text-rose-300">{(mutar.error as Error).message}</p>}
 
@@ -626,6 +650,7 @@ function Solicitar({ alTerminar }: { alTerminar: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────
 export function Servicios() {
   const cola = useQueryClient();
+  const [parametros] = useSearchParams();
   const rol = sesion.rol();
   const esCliente = rol === 'CLIENTE';
   const esTecnico = rol === 'TECNICO';
@@ -633,7 +658,8 @@ export function Servicios() {
 
   const [abierto, setAbierto] = useState<number | null>(null);
   const [conMotivo, setConMotivo] = useState<{ id: number; accion: 'cancelar' | 'rechazar' } | null>(null);
-  const [solicitando, setSolicitando] = useState(false);
+  const vehiculoIdInicial = esCliente ? parametros.get('vehiculoId') ?? undefined : undefined;
+  const [solicitando, setSolicitando] = useState(Boolean(vehiculoIdInicial));
   const [ok, setOk] = useState('');
   // Punto que el tecnico marca en el mapa cuando el equipo no puede ubicarse.
   const [manual, setManual] = useState<Punto | null>(null);
@@ -818,6 +844,7 @@ export function Servicios() {
           </button>
           {solicitando && (
             <Solicitar
+              vehiculoIdInicial={vehiculoIdInicial}
               alTerminar={() => {
                 setSolicitando(false);
                 setOk('Solicitud enviada. La central la está verificando y le asignará un técnico.');

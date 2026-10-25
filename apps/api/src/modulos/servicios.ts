@@ -248,6 +248,20 @@ rutasServicios.patch('/:id/clasificar', exigirRol('CENTRAL', 'ADMINISTRADOR'), a
     });
   }
 
+  const trabajoActivo = await prisma.servicio.findFirst({
+    where: {
+      id: { not: id },
+      tecnicoId: tecnico.id,
+      estado: { in: ['ASIGNADO', 'EN_EJECUCION'] },
+    },
+    select: { id: true },
+  });
+  if (trabajoActivo) {
+    return res.status(409).json({
+      error: `El técnico ya tiene el servicio #${trabajoActivo.id} asignado y en curso`,
+    });
+  }
+
   const resultado = await prisma.$transaction(async (tx) => {
     await tx.servicio.update({
       where: { id },

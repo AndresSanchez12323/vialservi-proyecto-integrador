@@ -2,6 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { autenticar, exigirRol } from '../auth.js';
+import { CERRADOS } from '../estado.js';
+import { randomUUID } from 'node:crypto';
+import { eliminarObjeto, urlDeSubidaTarjeta } from '../almacenamiento.js';
+import { analizarTarjeta } from '../ocr.js';
 
 // La placa es el identificador natural del vehiculo y con ella se consulta
 // el historial, por eso se guarda siempre en mayusculas y sin espacios.
@@ -11,7 +15,7 @@ import { autenticar, exigirRol } from '../auth.js';
 // expediente. Pedirlos al registrar solo lograria que el cliente los dejara
 // vacios o los inventara.
 const vehiculo = z.object({
-  placa: z.string().min(5).max(8).transform((p) => p.toUpperCase().replace(/\s/g, '')),
+  placa: z.string().min(5).max(6).transform((p) => p.toUpperCase().replace(/\s/g, '')),
   marca: z.string().min(2),
   modelo: z.string().min(2),
   color: z.string().min(3),
@@ -45,6 +49,23 @@ const objeto = z.object({
 
 export const rutasVehiculos = Router();
 rutasVehiculos.use(autenticar);
+
+rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (_req, res) => {
+  const subida = await urlDeSubidaTarjeta(randomUUID());
+  if (!subida.url) return res.status(503).json({ error: 'La lectura automática requiere OCR AWS configurado.' });
+  res.json(subida);
+});
+
+rutasVehiculos.post('/leer-tarjeta/analizar', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (req, res) => {
+  const clave = typeof req.body?.clave === 'string' ? req.body.clave : '';
+  if (!clave) return res.status(400).json({ error: 'Falta la imagen de la tarjeta.' });
+  try {
+    res.json(await analizarTarjeta(clave));
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'No se pudo leer la tarjeta.';
+    res.status(422).json({ error: mensaje });
+  }
+});
 
 /** La lista tambien se filtra por rol: el cliente necesita ver sus vehiculos
  *  para poder solicitar un servicio, pero no los de los demas, porque cada
@@ -135,6 +156,37 @@ rutasVehiculos.post('/', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async
     include: { cliente: { select: { id: true, nombre: true, documento: true } } },
   });
   res.status(201).json(creado);
+});
+
+/** El cliente solo puede eliminar un vehiculo propio que aun no haya entrado
+ *  al flujo operativo. Un expediente o un servicio abierto debe conservarse
+ *  para no romper el historial del sistema. */
+rutasVehiculos.delete('/:id', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (req, res) => {
+  const id = Number(req.params.id);
+  const encontrado = await prisma.vehiculo.findUnique({
+    where: { id },
+    include: {
+      servicios: { select: { id: true, estado: true, expediente: { select: { id: true } } } },
+    },
+  });
+  if (!encontrado) return res.status(404).json({ error: 'Vehiculo no encontrado' });
+
+  if (req.sesion!.rol === 'CLIENTE') {
+    const cliente = await prisma.cliente.findUnique({ where: { usuarioId: req.sesion!.id } });
+    if (encontrado.clienteId !== cliente?.id) {
+      return res.status(403).json({ error: 'No tiene permiso para esta accion' });
+    }
+  }
+
+  if (encontrado.servicios.some((servicio) => servicio.expediente)) {
+    return res.status(409).json({ error: 'No puede eliminar el vehiculo porque tiene un expediente' });
+  }
+  if (encontrado.servicios.some((servicio) => !CERRADOS.includes(servicio.estado))) {
+    return res.status(409).json({ error: 'No puede eliminar el vehiculo porque tiene un servicio abierto' });
+  }
+
+  await prisma.vehiculo.delete({ where: { id } });
+  res.json({ eliminado: true });
 });
 
 /** La central completa los datos de la licencia de transito. */

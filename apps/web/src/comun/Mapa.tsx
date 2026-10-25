@@ -241,3 +241,28 @@ export const ubicacionActual = async (): Promise<ResultadoUbicacion> => {
     }
   }
 };
+
+/**
+ * Convierte unas coordenadas en una referencia legible. Nominatim puede no
+ * responder o no encontrar una calle; el llamador conserva entonces las
+ * coordenadas como dirección utilizable.
+ */
+export const direccionDesdePunto = async (punto: Punto): Promise<string | null> => {
+  const consulta = new URL('https://nominatim.openstreetmap.org/reverse');
+  consulta.searchParams.set('format', 'jsonv2');
+  consulta.searchParams.set('lat', String(punto.lat));
+  consulta.searchParams.set('lon', String(punto.lng));
+  consulta.searchParams.set('zoom', '18');
+  consulta.searchParams.set('addressdetails', '1');
+
+  try {
+    const respuesta = await fetch(consulta);
+    if (!respuesta.ok) return null;
+    const cuerpo = (await respuesta.json()) as { display_name?: unknown };
+    return typeof cuerpo.display_name === 'string' && cuerpo.display_name.trim()
+      ? cuerpo.display_name
+      : null;
+  } catch {
+    return null;
+  }
+};

@@ -23,6 +23,7 @@
     "@aws-sdk/client-s3": "^3.1146.0",
     "@aws-sdk/client-sesv2": "^3.1146.0",
     "@aws-sdk/client-ssm": "^3.1149.0",
+    "@aws-sdk/client-textract": "^3.1156.0",
     "@aws-sdk/s3-request-presigner": "^3.1146.0",
     "@codegenie/serverless-express": "^4.17.0",
     "@prisma/adapter-pg": "^6.19.3",

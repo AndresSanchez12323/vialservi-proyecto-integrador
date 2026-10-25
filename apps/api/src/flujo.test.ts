@@ -30,7 +30,7 @@ const como = (token: string) => (peticion: request.Test) =>
 
 let contador = 0;
 const unico = () => `${Date.now().toString().slice(-7)}${contador++}`;
-const placaNueva = () => `T${unico()}`.slice(0, 8).toUpperCase();
+const placaNueva = () => `T${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
 let central = '';
 let tecnico1 = '';

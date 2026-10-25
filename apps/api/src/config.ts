@@ -34,6 +34,7 @@ const esquema = z.object({
    */
   ALMACENAMIENTO_MODO: z.enum(['local', 's3']).default('local'),
   S3_BUCKET_EVIDENCIAS: z.string().optional(),
+  OCR_MODO: z.enum(['local', 'aws']).default('local'),
   /** Minutos de vida de las URL prefirmadas. Cortas a proposito. */
   S3_URL_MINUTOS: z.coerce.number().int().positive().max(60).default(15),
 
@@ -110,6 +111,10 @@ if (config.ALMACENAMIENTO_MODO === 's3' && !config.S3_BUCKET_EVIDENCIAS) {
   throw new Error(
     'ALMACENAMIENTO_MODO=s3 exige S3_BUCKET_EVIDENCIAS con el nombre del bucket.',
   );
+}
+
+if (config.OCR_MODO === 'aws' && config.ALMACENAMIENTO_MODO !== 's3') {
+  throw new Error('OCR_MODO=aws exige ALMACENAMIENTO_MODO=s3.');
 }
 
 // Un modo smtp a medias es peor que no tenerlo: el aplicativo diria "enviamos

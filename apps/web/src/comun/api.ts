@@ -72,6 +72,19 @@ export async function pedir<T>(ruta: string, opciones: RequestInit = {}): Promis
 export const enviar = <T>(ruta: string, metodo: string, cuerpo?: unknown) =>
   pedir<T>(ruta, { method: metodo, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
 
+export type DatosTarjeta = { placa: string; marca: string; modelo: string; color: string };
+
+type SubidaTarjeta = { clave: string; url: string; encabezados: Record<string, string> };
+
+export const leerTarjeta = async (archivo: File): Promise<DatosTarjeta> => {
+  if (archivo.type !== 'image/jpeg') throw new Error('Seleccione una foto JPG de la tarjeta.');
+  if (archivo.size > 5 * 1024 * 1024) throw new Error('La imagen no puede superar 5 MB.');
+  const subida = await pedir<SubidaTarjeta>('/vehiculos/leer-tarjeta/preparar', { method: 'POST' });
+  const carga = await fetch(subida.url, { method: 'PUT', headers: subida.encabezados, body: archivo });
+  if (!carga.ok) throw new Error('No se pudo subir la foto de la tarjeta.');
+  return enviar<DatosTarjeta>('/vehiculos/leer-tarjeta/analizar', 'POST', { clave: subida.clave });
+};
+
 /** Peticion sin sesion, para registro y recuperacion de clave. */
 export const publico = async <T>(ruta: string, cuerpo: unknown): Promise<T> => {
   if (import.meta.env.PROD) await reactivarBase();

@@ -43,7 +43,7 @@ const como = (token: string) => (peticion: request.Test) =>
 // resultado no cambie segun cuantas veces se haya corrido la suite.
 let contador = 0;
 const unico = () => `${Date.now().toString().slice(-7)}${contador++}`;
-const placaNueva = () => `T${unico()}`.slice(0, 8).toUpperCase();
+const placaNueva = () => `T${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
 const clienteNuevo = () =>
   prisma.cliente.create({
