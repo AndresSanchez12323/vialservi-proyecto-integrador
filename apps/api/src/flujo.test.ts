@@ -883,10 +883,26 @@ const servicioSolicitado = async (opciones: Opciones = {}) => {
   };
 };
 
+/**
+ * Cada escenario es un dia independiente, pero todos usan al tecnico 3001
+ * porque las pruebas actuan despues con SU token. El servidor ya no permite
+ * asignarle un segundo trabajo mientras tenga uno ASIGNADO o EN_EJECUCION, asi
+ * que se da por terminado lo que quedo del escenario anterior (y del seed)
+ * antes de asignarle el nuevo. Se toca la base directamente a proposito: es
+ * montaje del escenario, no parte de lo que se esta comprobando.
+ */
+const liberarTecnico = async (tecnicoId: number) => {
+  await prisma.servicio.updateMany({
+    where: { tecnicoId, estado: { in: ['ASIGNADO', 'EN_EJECUCION'] } },
+    data: { terminadoEn: new Date(), estado: 'TERMINADO' },
+  });
+};
+
 /** Lo anterior, ya clasificado y asignado al tecnico 3001 por la central. */
 const servicioAsignado = async (opciones: Opciones = {}) => {
   const base = await servicioSolicitado(opciones);
   const t = await prisma.tecnico.findFirstOrThrow({ where: { documento: '3001' } });
+  await liberarTecnico(t.id);
 
   const r = await como(central)(
     request(app).patch(`/api/servicios/${base.servicioId}/clasificar`).send({

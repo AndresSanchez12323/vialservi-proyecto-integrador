@@ -90,6 +90,11 @@ Resources:
           AURORA_SECRET_ARN: !Ref SecretArn
           AURORA_DATABASE: vialservi
           ALMACENAMIENTO_MODO: s3
+          # Textract lee la tarjeta de propiedad desde el mismo bucket de
+          # evidencias, bajo el prefijo ocr-tarjetas/, y la imagen se borra al
+          # terminar. Sin esto la funcion arranca en modo local y la lectura
+          # automatica responde 503 aunque el permiso IAM exista.
+          OCR_MODO: aws
           S3_BUCKET_EVIDENCIAS: !Ref BucketEvidencias
           CORREO_MODO: !Ref CorreoModo
           CORREO_REMITENTE: !Ref CorreoRemitente
