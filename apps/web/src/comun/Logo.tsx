@@ -6,6 +6,10 @@ import logoUrl from '../recursos/logo-vialservi.jpg';
  * El archivo es un JPG con fondo blanco (sin transparencia), asi que se
  * presenta dentro de una pastilla blanca: sobre el fondo oscuro de la app, un
  * rectangulo blanco suelto se veria como un recuadro roto.
+ *
+ * La pastilla es blanca TAMBIEN en el tema claro, y no es un olvido: el logo
+ * trae su propio fondo blanco incrustado en el JPG, de modo que pintarla del
+ * color del tema solo lograria un marco de otro color alrededor del blanco.
  */
 export function Logo({ className = 'h-9' }: { className?: string }) {
   return (

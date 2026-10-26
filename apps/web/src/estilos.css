@@ -2,6 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ════════════════════════════════════════════════════════════════════════
+   TEMAS
+
+   Un unico juego de variables con los colores por significado. El tema
+   oscuro vive en :root y el claro lo redefine; `data-tema` en <html> decide
+   cual manda, y lo pone el guion en linea de index.html antes del primer
+   pintado para que no haya destello de tema equivocado.
+
+   Las variables de COLOR van en canales sueltos («251 191 36») porque asi
+   Tailwind les puede aplicar transparencia: bg-marca-fondo/20. Las de
+   SUPERFICIE van como color completo, con su transparencia dentro, porque
+   esa transparencia no es la misma en los dos temas: el vidrio oscuro es
+   blanco al 10 % y el claro, blanco al 72 %.
+   ════════════════════════════════════════════════════════════════════════ */
+:root,
+:root[data-tema='oscuro'] {
+  color-scheme: dark;
+
+  --lienzo: 11 18 32;
+  --superficie: 17 26 46;
+  --velo: 255 255 255;
+
+  --tinta: 241 245 249;
+  --tinta-suave: 203 213 225;
+  --tinta-tenue: 148 163 184;
+  --tinta-sutil: 100 116 139;
+
+  --marca: 252 211 77;
+  --marca-fondo: 251 191 36;
+  --marca-tinta: 15 23 42;
+
+  --exito: 167 243 208;
+  --exito-fondo: 52 211 153;
+  --riesgo: 254 205 211;
+  --riesgo-fondo: 251 113 133;
+  --dato: 186 230 253;
+  --dato-fondo: 56 189 248;
+  --cierre: 221 214 254;
+  --cierre-fondo: 167 139 250;
+  --neutro: 226 232 240;
+  --neutro-fondo: 148 163 184;
+
+  /* Superficies */
+  --vidrio-fondo: rgb(255 255 255 / 0.1);
+  --vidrio-borde: rgb(255 255 255 / 0.15);
+  --vidrio-interior: rgb(255 255 255 / 0.07);
+  --vidrio-interior-borde: rgb(255 255 255 / 0.1);
+  --campo-fondo: rgb(255 255 255 / 0.1);
+  --campo-borde: rgb(255 255 255 / 0.2);
+  --flotante-fondo: rgb(17 26 46 / 0.96);
+
+  /* Manchas de color del fondo: sobre un fondo plano el vidrio no se nota. */
+  --mancha-calida: rgb(251 146 60 / 0.28);
+  --mancha-fria: rgb(56 189 248 / 0.22);
+  --mancha-violeta: rgb(168 85 247 / 0.2);
+  --degradado-base: linear-gradient(160deg, #0b1220 0%, #131c31 50%, #0b1220 100%);
+}
+
+:root[data-tema='claro'] {
+  color-scheme: light;
+
+  --lienzo: 246 247 251;
+  --superficie: 255 255 255;
+  /* La tinta neutra se vuelve oscura: el mismo bg-velo/10 que aclaraba sobre
+     el fondo oscuro ahora sombrea sobre el claro, sin tocar las pantallas. */
+  --velo: 15 23 42;
+
+  --tinta: 15 23 42;
+  --tinta-suave: 51 65 85;
+  --tinta-tenue: 71 85 105;
+  --tinta-sutil: 100 116 139;
+
+  /* Los acentos se oscurecen para que se LEAN sobre blanco. Un ambar-300
+     sobre blanco da 1,5:1 de contraste: es decorativo, no es texto. */
+  --marca: 180 83 9;
+  --marca-fondo: 245 158 11;
+  --marca-tinta: 15 23 42;
+
+  --exito: 4 120 87;
+  --exito-fondo: 16 185 129;
+  --riesgo: 190 18 60;
+  --riesgo-fondo: 244 63 94;
+  --dato: 3 105 161;
+  --dato-fondo: 14 165 233;
+  --cierre: 109 40 217;
+  --cierre-fondo: 139 92 246;
+  --neutro: 71 85 105;
+  --neutro-fondo: 100 116 139;
+
+  --vidrio-fondo: rgb(255 255 255 / 0.72);
+  --vidrio-borde: rgb(15 23 42 / 0.1);
+  /* Hacia dentro se SOMBREA, no se aclara: sobre una tarjeta casi blanca, una
+     capa mas blanca no se distingue de la tarjeta. */
+  --vidrio-interior: rgb(15 23 42 / 0.04);
+  --vidrio-interior-borde: rgb(15 23 42 / 0.08);
+  --campo-fondo: rgb(255 255 255 / 0.9);
+  --campo-borde: rgb(15 23 42 / 0.18);
+  --flotante-fondo: rgb(255 255 255 / 0.98);
+
+  --mancha-calida: rgb(251 146 60 / 0.16);
+  --mancha-fria: rgb(56 189 248 / 0.14);
+  --mancha-violeta: rgb(168 85 247 / 0.1);
+  --degradado-base: linear-gradient(160deg, #f8fafc 0%, #eef2f9 50%, #f8fafc 100%);
+}
+
 /* Fondo con degradado y manchas de color: es lo que hace que el efecto de
    vidrio esmerilado se note. Sobre un fondo plano el glassmorphism no se ve.
 
@@ -12,7 +117,11 @@
    quieta y no vuelve a pintar al desplazarse. */
 @layer base {
   body {
-    @apply min-h-screen bg-[#0b1220] text-slate-100 antialiased;
+    @apply min-h-screen bg-lienzo text-tinta antialiased;
+    /* Una placa, un VIN o un correo largo no tienen donde partirse y empujan
+       el ancho de su contenedor hasta sacarlo de la pantalla en un telefono.
+       Partirlos por necesidad es mejor que un desplazamiento horizontal. */
+    overflow-wrap: break-word;
   }
 
   body::before {
@@ -21,10 +130,30 @@
     inset: 0;
     z-index: -1;
     background:
-      radial-gradient(60rem 60rem at 10% -10%, rgba(251, 146, 60, 0.28), transparent 60%),
-      radial-gradient(50rem 50rem at 100% 0%, rgba(56, 189, 248, 0.22), transparent 55%),
-      radial-gradient(40rem 40rem at 50% 120%, rgba(168, 85, 247, 0.20), transparent 60%),
-      linear-gradient(160deg, #0b1220 0%, #131c31 50%, #0b1220 100%);
+      radial-gradient(60rem 60rem at 10% -10%, var(--mancha-calida), transparent 60%),
+      radial-gradient(50rem 50rem at 100% 0%, var(--mancha-fria), transparent 55%),
+      radial-gradient(40rem 40rem at 50% 120%, var(--mancha-violeta), transparent 60%),
+      var(--degradado-base);
+  }
+
+  /* Nada se sale de ancho por una imagen o un video: en un telefono una foto
+     de evidencia a tamano natural desplazaria toda la pagina. */
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
+  }
+
+  /* El tema cambia de golpe, no a saltos: sin esto, al pulsar el interruptor
+     cada capa de vidrio salta de color en un fotograma distinto. */
+  body,
+  body::before {
+    transition: background-color 0.25s ease, background 0.25s ease;
+  }
+
+  ::selection {
+    background: rgb(var(--marca-fondo) / 0.35);
   }
 }
 
@@ -32,35 +161,53 @@
   /* El desenfoque cuesta, y su costo crece con el radio: 12px se ve
      practicamente igual que 24px y vale la mitad. */
   .vidrio {
-    @apply rounded-2xl border border-white/15 bg-white/10 shadow-xl backdrop-blur-md;
+    @apply rounded-2xl shadow-xl backdrop-blur-md;
+    background: var(--vidrio-fondo);
+    border: 1px solid var(--vidrio-borde);
   }
 
   /* Una superficie que FLOTA sobre el contenido no puede ser translucida: lo
      que queda debajo se lee a traves y el texto se vuelve ilegible. Por eso
      esta variante es opaca, a diferencia de .vidrio. */
   .vidrio-flotante {
-    @apply rounded-2xl border border-white/15 bg-slate-900/95 shadow-2xl backdrop-blur-md;
+    @apply rounded-2xl shadow-2xl backdrop-blur-md;
+    background: var(--flotante-fondo);
+    border: 1px solid var(--vidrio-borde);
   }
 
   /* Las superficies interiores NO llevan desenfoque: ya estan encima de una
      tarjeta difuminada, de modo que el efecto no se nota y cada una anadia
      una capa mas que recalcular. */
   .vidrio-suave {
-    @apply rounded-xl border border-white/10 bg-white/[0.07];
+    @apply rounded-xl;
+    background: var(--vidrio-interior);
+    border: 1px solid var(--vidrio-interior-borde);
   }
 
   .campo {
-    @apply w-full rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-slate-100
-           placeholder-slate-400 outline-none
-           focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/30;
+    @apply w-full rounded-lg px-3 py-2 text-tinta outline-none
+           placeholder:text-tinta-tenue
+           focus:border-marca/60 focus:ring-2 focus:ring-marca/30;
+    background: var(--campo-fondo);
+    border: 1px solid var(--campo-borde);
   }
+
+  /* La lista desplegada de un select la pinta el sistema, no el CSS de la
+     pagina: sin fondo propio hereda blanco con texto claro en tema oscuro. */
+  .campo option {
+    @apply bg-superficie text-tinta;
+  }
+
+  /* El realce del raton va por brillo y no por otro color: bajarle la
+     transparencia aclararia en el tema claro y oscureceria en el oscuro, o
+     sea, lo contrario de lo que se espera en uno de los dos. */
   .boton {
-    @apply rounded-lg bg-amber-500/90 px-4 py-2 font-medium text-slate-900 shadow-lg
-           transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply rounded-lg bg-marca-fondo px-4 py-2 font-medium text-marca-tinta shadow-lg
+           transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .boton-suave {
-    @apply rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-slate-100
-           transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply rounded-lg border border-velo/20 bg-velo/10 px-3 py-1.5 text-sm text-tinta
+           transition-colors hover:bg-velo/20 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .etiqueta {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
@@ -69,37 +216,117 @@
   /* ── Avisos emergentes (SweetAlert2) ──────────────────────────────────
      Heredan el lenguaje visual de la aplicacion para que no parezcan de otro
      programa. El popup NO lleva transparencia: flota sobre el contenido y lo
-     de debajo se leeria a traves del texto (mismo motivo que .vidrio-flotante). */
+     de debajo se leeria a traves del texto (mismo motivo que .vidrio-flotante).
+     El fondo y el color del texto los fija avisos.ts leyendo estas mismas
+     variables, porque SweetAlert los escribe en el estilo del elemento. */
+  /* !important porque .swal2-popup es tambien una sola clase: sin el, cual
+     de las dos gana depende del orden en que acaben las hojas de estilo en
+     el paquete, que es justo lo que no se puede dar por sentado. */
   .vs-popup {
-    @apply rounded-2xl border border-white/15 shadow-2xl;
+    @apply rounded-2xl shadow-2xl;
+    background: var(--flotante-fondo) !important;
+    color: rgb(var(--tinta)) !important;
+    border: 1px solid var(--vidrio-borde);
   }
   .vs-titulo {
-    @apply text-lg font-semibold text-slate-100;
+    @apply text-lg font-semibold text-tinta;
   }
   .vs-texto {
-    @apply text-sm text-slate-300;
+    @apply text-sm text-tinta-suave;
   }
   .vs-acciones {
     @apply gap-2;
   }
   .vs-boton {
-    @apply rounded-lg bg-amber-500/90 px-4 py-2 font-medium text-slate-900 shadow-lg
-           transition-colors hover:bg-amber-400;
+    @apply rounded-lg bg-marca-fondo px-4 py-2 font-medium text-marca-tinta shadow-lg
+           transition hover:brightness-110;
   }
   .vs-boton-suave {
-    @apply rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm text-slate-100
-           transition-colors hover:bg-white/20;
+    @apply rounded-lg border border-velo/20 bg-velo/10 px-4 py-2 text-sm text-tinta
+           transition-colors hover:bg-velo/20;
   }
   .vs-boton-peligro {
-    @apply rounded-lg border border-rose-300/50 bg-rose-500/20 px-4 py-2 font-medium text-rose-100
-           transition-colors hover:bg-rose-500/30;
+    @apply rounded-lg border border-riesgo/50 bg-riesgo-fondo/20 px-4 py-2 font-medium text-riesgo
+           transition-colors hover:bg-riesgo-fondo/30;
   }
   .vs-progreso {
-    @apply !bg-amber-400/70;
+    @apply !bg-marca-fondo/70;
   }
   .vs-toast {
-    @apply border border-white/15;
+    border: 1px solid var(--vidrio-borde);
   }
+
+  /* El velo de detras oscurece tambien en el tema claro: su trabajo es
+     apartar la pagina, y un velo claro sobre fondo claro no aparta nada. */
+  .swal2-container {
+    background: rgb(2 6 23 / 0.6) !important;
+  }
+
+  /* En un telefono el aviso se pega a los bordes: SweetAlert lo dimensiona en
+     em sobre el ancho de la ventana y no deja margen. Se le abre uno, y el
+     acuse de la esquina se excluye porque tiene su propio tamaño. */
+  @media (max-width: 30rem) {
+    .swal2-popup:not(.swal2-toast) {
+      width: calc(100vw - 2rem) !important;
+      padding: 1.25rem !important;
+    }
+    .swal2-popup.swal2-toast {
+      max-width: calc(100vw - 1.5rem) !important;
+    }
+    .swal2-container.swal2-top-end {
+      padding: 0.75rem !important;
+    }
+  }
+
+  /* Lo que SweetAlert pinta por su cuenta y no pasa por nuestras clases. */
+  .swal2-input,
+  .swal2-textarea {
+    @apply text-tinta;
+    background: var(--campo-fondo) !important;
+    border: 1px solid var(--campo-borde) !important;
+  }
+  .swal2-validation-message {
+    background: var(--vidrio-interior) !important;
+    color: rgb(var(--riesgo)) !important;
+  }
+
+  /* ── Tablas que no caben ───────────────────────────────────────────────
+     Una tabla de ocho columnas no entra en un telefono por mucho que se
+     ajusten los anchos. Donde hay tabla hay tambien una lista de tarjetas
+     para pantallas estrechas; esta clase es para el resto de casos: deja
+     desplazar la tabla en horizontal sin arrastrar toda la pagina con ella. */
+  .tabla-ancha {
+    @apply -mx-px overflow-x-auto overscroll-x-contain;
+  }
+}
+
+/* ── Mapa ─────────────────────────────────────────────────────────────────
+   Los mosaicos de OpenStreetMap solo existen en claro. En tema oscuro un mapa
+   blanco deslumbra en medio de la noche, que es justo cuando el tecnico lo
+   usa, asi que se le da la vuelta por filtro. Va SOLO en el panel de
+   mosaicos: los marcadores y los globos viven en otros paneles y no se
+   invierten con ellos. */
+[data-tema='oscuro'] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.92) saturate(0.75);
+}
+
+/* Lo que se ve mientras llegan los mosaicos, en los dos temas. */
+.leaflet-container {
+  background: rgb(var(--lienzo));
+}
+
+.leaflet-control-attribution {
+  background: var(--flotante-fondo) !important;
+  color: rgb(var(--tinta-tenue)) !important;
+}
+.leaflet-control-attribution a {
+  color: rgb(var(--marca)) !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--flotante-fondo) !important;
+  color: rgb(var(--tinta)) !important;
 }
 
 /* La entrada da el golpe de vista; la salida se quita de en medio rapido.
@@ -119,4 +346,5 @@
    para algunas personas esas animaciones producen mareo. */
 @media (prefers-reduced-motion: reduce) {
   .vs-entra, .vs-sale { animation: none; }
+  body, body::before { transition: none; }
 }

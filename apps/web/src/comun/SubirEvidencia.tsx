@@ -82,11 +82,11 @@ export function SubirEvidencia({
         <button className="boton-suave" disabled={ocupado} onClick={() => video.current?.click()}>
           🎥 Grabar o elegir video
         </button>
-        {ocupado && <span className="text-xs text-amber-200">{TEXTO[paso]}</span>}
+        {ocupado && <span className="text-xs text-marca">{TEXTO[paso]}</span>}
       </div>
 
 
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-tinta-sutil">
         Fotografía hasta {LIMITES.FOTO.etiqueta} · video hasta {LIMITES.VIDEO.etiqueta} y{' '}
         {SEGUNDOS_MAX_VIDEO} segundos. El archivo sube directo al almacenamiento, no pasa por el
         servidor.

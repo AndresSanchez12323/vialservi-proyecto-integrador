@@ -28,9 +28,6 @@ export const textoDelError = (error: unknown): string => {
 // El popup FLOTA sobre el contenido, asi que es opaco: translucido se leeria
 // lo de abajo a traves del texto. Mismo criterio que .vidrio-flotante.
 const base: SweetAlertOptions = {
-  background: '#111a2e',
-  color: '#e2e8f0',
-  backdrop: 'rgba(2, 6, 23, 0.72)',
   buttonsStyling: false,
   customClass: {
     popup: 'vs-popup',
@@ -46,6 +43,15 @@ const base: SweetAlertOptions = {
   hideClass: { popup: 'vs-sale' },
 };
 
+/**
+ * Los colores NO se pasan por aqui, y es a proposito.
+ *
+ * `background` y `color` los escribe SweetAlert como estilo en linea del
+ * popup, y un estilo en linea es un valor fijo: el aviso se quedaria con el
+ * color del tema que hubiera al abrirlo y no cambiaria nunca. Al dejarlos
+ * fuera, el color lo pone .vs-popup en estilos.css con las variables del
+ * tema, que es lo que se actualiza solo.
+ */
 const alerta = Swal.mixin(base);
 
 /**

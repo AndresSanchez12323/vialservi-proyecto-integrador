@@ -3,19 +3,48 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { pedir, type Servicio } from '../comun/api';
 import { ESTADOS, TIPOS, fecha } from '../comun/formato';
+import { useTema, type Tema } from '../comun/tema';
 
 type Fila = Servicio & {
   expediente: (Servicio['expediente'] & { _count: { evidencias: number; novedades: number } }) | null;
 };
 
 const CATEGORIAS = Object.keys(TIPOS);
-const COLORES: Record<string, string> = {
-  GRUA: '#38bdf8',
-  CARRO_TALLER: '#fbbf24',
-  CONDUCTOR_ELEGIDO: '#a78bfa',
-  SIN_CLASIFICAR: '#64748b',
-};
 const NADA = 'SIN_CLASIFICAR';
+
+/**
+ * Colores del anillo, uno por tema.
+ *
+ * El tema claro NO es el oscuro con otro fondo: son los mismos tres tonos
+ * (cian, ambar, purpura) escalonados para cada superficie. Un ambar que
+ * resalta sobre el fondo oscuro tiene 1,5:1 de contraste sobre blanco, o sea,
+ * un segmento que practicamente no se ve.
+ *
+ * Los dos juegos estan comprobados con el validador de paletas: separacion
+ * bajo daltonismo (protanopia y deuteranopia) y bajo vision normal entre todas
+ * las parejas, y contraste minimo 3:1 contra la superficie de la tarjeta. Si
+ * se cambia un tono hay que volver a pasarlo, no mirarlo a ojo.
+ *
+ * «Sin clasificar» es gris a proposito: no es una categoria mas, es la
+ * ausencia de categoria, y por eso no lleva color propio. Se le da la
+ * luminosidad contraria a la del fondo —oscuro en tema claro, claro en tema
+ * oscuro— porque un gris medio junto al cian es la unica pareja que el
+ * validador no deja pasar: a simple vista se confunden.
+ */
+const COLORES: Record<Tema, Record<string, string>> = {
+  claro: {
+    GRUA: '#0891b2',
+    CARRO_TALLER: '#b45309',
+    CONDUCTOR_ELEGIDO: '#7e22ce',
+    SIN_CLASIFICAR: '#334155',
+  },
+  oscuro: {
+    GRUA: '#0891b2',
+    CARRO_TALLER: '#d97706',
+    CONDUCTOR_ELEGIDO: '#a855f7',
+    SIN_CLASIFICAR: '#cbd5e1',
+  },
+};
 
 const categoriaDe = (s: Fila) => s.tipo ?? NADA;
 const nombreDe = (c: string) => (c === NADA ? 'Sin clasificar' : (TIPOS[c] ?? c));
@@ -65,11 +94,17 @@ export function Historicos() {
 
   const elegir = (c: string) => setCategoria((actual) => (actual === c ? null : c));
 
+  // El anillo se pinta con atributos SVG, no con clases, asi que necesita el
+  // tema como dato: useTema lo vuelve a pintar cuando la persona lo cambia.
+  const { tema } = useTema();
+  const paleta = COLORES[tema];
+  const hueco = segmentos.length > 1 ? 0.7 : 0;
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-semibold">Gestionar históricos</h2>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-tinta-tenue">
           Distribución de servicios por categoría. Pulse un segmento para ver su historial.
         </p>
       </div>
@@ -78,16 +113,26 @@ export function Historicos() {
         <div className="relative h-48 w-48 shrink-0">
           <svg viewBox="0 0 42 42" className="h-full w-full -rotate-90">
             {total === 0 && (
-              <circle cx="21" cy="21" r="15.9155" fill="none" stroke="#334155" strokeWidth="7" />
+              // El anillo vacio se pinta con el velo del tema, no con un gris
+              // fijo: sobre fondo claro un gris oscuro parece un dato.
+              <circle
+                cx="21" cy="21" r="15.9155"
+                fill="none"
+                strokeWidth="7"
+                className="stroke-velo/15"
+              />
             )}
             {segmentos.map((s) => (
               <circle
                 key={s.categoria}
                 cx="21" cy="21" r="15.9155"
                 fill="none"
-                stroke={COLORES[s.categoria]}
+                stroke={paleta[s.categoria]}
                 strokeWidth={categoria && categoria !== s.categoria ? '5' : '7'}
-                strokeDasharray={`${s.pct} ${100 - s.pct}`}
+                // Una rendija entre segmentos: pegados, dos colores contiguos
+                // se leen como una sola mancha. No se abre cuando hay uno
+                // solo, porque entonces seria una muesca sin motivo.
+                strokeDasharray={`${Math.max(s.pct - hueco, 0.3)} ${100 - s.pct + hueco}`}
                 strokeDashoffset={25 - s.desde}
                 opacity={!categoria || categoria === s.categoria ? 1 : 0.35}
                 onClick={() => elegir(s.categoria)}
@@ -99,7 +144,7 @@ export function Historicos() {
           </svg>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
             <p className="text-2xl font-semibold">{total}</p>
-            <p className="text-xs text-slate-400">servicios</p>
+            <p className="text-xs text-tinta-tenue">servicios</p>
           </div>
         </div>
 
@@ -109,18 +154,18 @@ export function Historicos() {
               <button
                 onClick={() => elegir(s.categoria)}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
-                  categoria === s.categoria ? 'bg-white/15 font-medium' : 'hover:bg-white/10'
+                  categoria === s.categoria ? 'bg-velo/15 font-medium' : 'hover:bg-velo/10'
                 }`}
               >
-                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: COLORES[s.categoria] }} />
+                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: paleta[s.categoria] }} />
                 <span className="flex-1 text-left">{nombreDe(s.categoria)}</span>
-                <span className="font-mono text-slate-300">{s.total}</span>
-                <span className="w-14 text-right font-mono text-amber-300">{s.pct.toFixed(1)} %</span>
+                <span className="font-mono text-tinta-suave">{s.total}</span>
+                <span className="w-14 text-right font-mono text-marca">{s.pct.toFixed(1)} %</span>
               </button>
             </li>
           ))}
           {total === 0 && !isLoading && (
-            <li className="text-sm text-slate-500">Aún no hay servicios registrados.</li>
+            <li className="text-sm text-tinta-sutil">Aún no hay servicios registrados.</li>
           )}
         </ul>
       </section>
@@ -139,11 +184,11 @@ export function Historicos() {
         )}
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Buscando…</p>}
+      {isLoading && <p className="text-sm text-tinta-tenue">Buscando…</p>}
 
       <h3 className="font-medium">
         Historial · {categoria ? nombreDe(categoria) : 'Todas las categorías'}
-        <span className="ml-2 font-mono text-sm text-amber-300">({visibles.length})</span>
+        <span className="ml-2 font-mono text-sm text-marca">({visibles.length})</span>
       </h3>
 
       <div className="space-y-3">
@@ -153,11 +198,11 @@ export function Historicos() {
               <span className={`etiqueta ${ESTADOS[s.estado]?.clase ?? ''}`}>
                 {ESTADOS[s.estado]?.texto ?? s.estado}
               </span>
-              <span className="etiqueta border border-white/20 bg-white/10 text-slate-200">
+              <span className="etiqueta border border-velo/20 bg-velo/10 text-tinta-suave">
                 {nombreDe(categoriaDe(s))}
               </span>
               {s.expediente && (
-                <Link to={`/expedientes/${s.expediente.id}`} className="etiqueta border border-amber-300/40 bg-amber-400/15 font-mono text-amber-200 hover:bg-amber-400/25">
+                <Link to={`/expedientes/${s.expediente.id}`} className="etiqueta border border-marca/40 bg-marca-fondo/15 font-mono text-marca hover:bg-marca-fondo/25">
                   {s.expediente.consecutivo}
                 </Link>
               )}
@@ -165,25 +210,25 @@ export function Historicos() {
 
             <p className="text-sm">{s.descripcion}</p>
 
-            <div className="grid grid-cols-1 gap-3 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 border-t border-velo/10 pt-3 text-sm sm:grid-cols-3">
               <div>
-                <p className="text-xs uppercase text-slate-500">Cliente</p>
+                <p className="text-xs uppercase text-tinta-sutil">Cliente</p>
                 <p>{s.cliente.nombre}</p>
-                <p className="font-mono text-xs text-slate-400">{s.cliente.documento} · {s.cliente.telefono}</p>
+                <p className="font-mono text-xs text-tinta-tenue">{s.cliente.documento} · {s.cliente.telefono}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">Vehículo</p>
-                <p className="font-mono text-amber-300">{s.vehiculo.placa}</p>
-                <p className="text-slate-300">{s.vehiculo.marca} {s.vehiculo.modelo} · {s.vehiculo.color}</p>
+                <p className="text-xs uppercase text-tinta-sutil">Vehículo</p>
+                <p className="font-mono text-marca">{s.vehiculo.placa}</p>
+                <p className="text-tinta-suave">{s.vehiculo.marca} {s.vehiculo.modelo} · {s.vehiculo.color}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-500">Técnico</p>
+                <p className="text-xs uppercase text-tinta-sutil">Técnico</p>
                 <p>{s.tecnico?.nombre ?? 'sin asignar'}</p>
-                {s.tecnico && <p className="text-xs text-slate-400">{s.tecnico.especialidades}</p>}
+                {s.tecnico && <p className="text-xs text-tinta-tenue">{s.tecnico.especialidades}</p>}
               </div>
             </div>
 
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-tinta-sutil">
               {fecha(s.solicitadoEn)} · {s.direccion}
               {s.expediente && (
                 <> · {s.expediente._count.evidencias} evidencias · {s.expediente._count.novedades} novedades</>
@@ -192,7 +237,7 @@ export function Historicos() {
           </article>
         ))}
         {visibles.length === 0 && !isLoading && (
-          <p className="vidrio p-6 text-sm text-slate-400">No hay servicios para ese filtro.</p>
+          <p className="vidrio p-6 text-sm text-tinta-tenue">No hay servicios para ese filtro.</p>
         )}
       </div>
     </div>

@@ -42,34 +42,34 @@ export function VistaEvidencia({
       <button
         type="button"
         onClick={() => setAbierta(!abierta)}
-        className="w-full p-4 text-left transition hover:bg-white/5"
+        className="w-full p-4 text-left transition hover:bg-velo/5"
       >
         <div className="flex flex-wrap items-center justify-between gap-1">
           <span className={`etiqueta border ${CATEGORIAS[evidencia.categoria]?.clase ?? ''}`}>
             {CATEGORIAS[evidencia.categoria]?.texto ?? evidencia.categoria}
           </span>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-tinta-tenue">
             {evidencia.tipo} {abierta ? '▾' : '▸'}
           </span>
         </div>
 
         {evidencia.posteriorAlCierre && (
-          <span className="etiqueta mt-2 border border-amber-300/40 bg-amber-400/20 text-amber-200">
+          <span className="etiqueta mt-2 border border-marca/40 bg-marca-fondo/20 text-marca">
             posterior al cierre
           </span>
         )}
 
         <p className="mt-2 text-sm">{evidencia.subidaPor.nombre}</p>
-        <p className="text-xs text-amber-300">
+        <p className="text-xs text-marca">
           {ROLES[evidencia.subidaPor.rol] ?? evidencia.subidaPor.rol}
         </p>
-        <p className="mt-1 text-xs text-slate-500">{fecha(evidencia.tomadaEn)}</p>
+        <p className="mt-1 text-xs text-tinta-sutil">{fecha(evidencia.tomadaEn)}</p>
       </button>
 
       {abierta && (
-        <div className="border-t border-white/10 p-3">
-          {isLoading && <p className="text-xs text-slate-400">Abriendo…</p>}
-          {error && <p className="text-xs text-rose-300">{(error as Error).message}</p>}
+        <div className="border-t border-velo/10 p-3">
+          {isLoading && <p className="text-xs text-tinta-tenue">Abriendo…</p>}
+          {error && <p className="text-xs text-riesgo">{(error as Error).message}</p>}
 
           {data?.url ? (
             esFoto ? (
@@ -88,11 +88,11 @@ export function VistaEvidencia({
             data && (
               // Modo local: no hay archivo que mostrar, solo la referencia. Se
               // dice con claridad para que nadie crea que la imagen falló.
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <p className="text-xs text-slate-400">
+              <div className="rounded-lg border border-velo/10 bg-velo/[0.03] p-3">
+                <p className="text-xs text-tinta-tenue">
                   Modo local: se registró la referencia, no el archivo.
                 </p>
-                <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{data.clave}</p>
+                <p className="mt-1 break-all font-mono text-[11px] text-tinta-sutil">{data.clave}</p>
               </div>
             )
           )}

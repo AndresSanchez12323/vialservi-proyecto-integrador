@@ -78,7 +78,10 @@ export function Notificaciones() {
       >
         🔔
         {sinLeer > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-semibold text-white">
+          /* Tinta oscura sobre el rojo lleno en los dos temas: es la unica que
+             contrasta, porque el rojo de relleno tambien es claro en el tema
+             oscuro y un numero blanco encima no se leeria. */
+          <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-riesgo-fondo px-1 text-[11px] font-semibold text-marca-tinta">
             {sinLeer > 9 ? '9+' : sinLeer}
           </span>
         )}
@@ -90,10 +93,10 @@ export function Notificaciones() {
         // presenta fija al viewport y centrada: siempre visible y completa.
         <div className="vidrio-flotante absolute right-0 z-50 mt-2 max-h-[28rem] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto p-2 shadow-2xl max-sm:fixed max-sm:left-4 max-sm:mt-0 max-sm:top-1/2 max-sm:max-h-[80vh] max-sm:-translate-y-1/2">
           <div className="flex items-center justify-between px-2 py-1.5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Notificaciones</p>
+            <p className="text-xs uppercase tracking-wide text-tinta-tenue">Notificaciones</p>
             {sinLeer > 0 && (
               <button
-                className="text-xs text-amber-300 hover:text-amber-200"
+                className="text-xs text-marca hover:text-marca"
                 onClick={() => marcarTodas.mutate()}
               >
                 Marcar todas
@@ -102,7 +105,7 @@ export function Notificaciones() {
           </div>
 
           {(data?.lista.length ?? 0) === 0 && (
-            <p className="px-2 py-6 text-center text-sm text-slate-400">Sin notificaciones.</p>
+            <p className="px-2 py-6 text-center text-sm text-tinta-tenue">Sin notificaciones.</p>
           )}
 
           <ul className="space-y-1">
@@ -110,8 +113,8 @@ export function Notificaciones() {
               <li key={n.id}>
                 <button
                   onClick={() => abrir(n)}
-                  className={`w-full rounded-lg px-3 py-2 text-left transition hover:bg-white/10 ${
-                    n.leidaEn ? 'opacity-60' : 'bg-white/[0.06]'
+                  className={`w-full rounded-lg px-3 py-2 text-left transition hover:bg-velo/10 ${
+                    n.leidaEn ? 'opacity-60' : 'bg-velo/[0.06]'
                   }`}
                 >
                   <div className="flex items-start gap-2">
@@ -120,17 +123,17 @@ export function Notificaciones() {
                       {/* Sin truncar a una linea: el titulo lleva la parte accionable
                           («pendiente de revisar y cerrar») justo al final. */}
                       <p className="text-sm font-medium leading-snug">{n.titulo}</p>
-                      <p className="mt-0.5 text-xs text-slate-300">{n.mensaje}</p>
-                      <p className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+                      <p className="mt-0.5 text-xs text-tinta-suave">{n.mensaje}</p>
+                      <p className="mt-1 flex items-center gap-2 text-[11px] text-tinta-sutil">
                         <span>{haceCuanto(n.creadaEn)}</span>
                         {n.servicio && (
-                          <span className="font-mono text-amber-300/80">
+                          <span className="font-mono text-marca/80">
                             {n.servicio.vehiculo.placa}
                           </span>
                         )}
                       </p>
                     </div>
-                    {!n.leidaEn && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />}
+                    {!n.leidaEn && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-marca-fondo" />}
                   </div>
                 </button>
               </li>

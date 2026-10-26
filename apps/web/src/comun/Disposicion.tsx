@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { sesion } from './api';
 import { Atras } from './Atras';
+import { BotonTema } from './BotonTema';
 import { Logo } from './Logo';
 import { Notificaciones } from './Notificaciones';
 import { ROLES } from './formato';
@@ -40,23 +41,32 @@ export function Disposicion() {
           contexto de apilamiento. Sin z-index propio, la cabecera encierra el
           desplegable de notificaciones en su capa y las tarjetas del contenido,
           que van despues en el DOM, se pintan encima. */}
-      <header className="vidrio relative z-30 mb-6 flex flex-wrap items-center justify-between gap-4 px-6 py-4">
-        <div className="min-w-0">
-          <Logo className="h-8" />
-          <p className="mt-1 text-xs text-slate-300">
-            Gestión de expedientes de servicios mecánicos, de cerrajería, de grúa y de
-            conductor elegido
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Atras />
-          <Notificaciones />
-          <div className="text-right">
-            <p className="text-sm font-medium">{usuario?.nombre}</p>
-            <p className="text-xs text-amber-300">{ROLES[rol] ?? rol}</p>
+      {/* En movil la cabecera va en dos filas: la marca arriba, ocupando el
+          ancho completo, y los controles debajo. Antes el grupo de la derecha
+          era un flex SIN envoltura —cinco controles en una fila que no cabe en
+          360 px— y sacaba la cabecera por el borde de la pantalla. */}
+      <header className="vidrio relative z-30 mb-6 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0 basis-full sm:basis-auto">
+            <Logo className="h-8" />
+            <p className="mt-1 text-xs text-tinta-suave">
+              Gestión de expedientes de servicios mecánicos, de cerrajería, de grúa y de
+              conductor elegido
+            </p>
           </div>
-          <button onClick={salir} className="boton-suave">Salir</button>
+
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:flex-none">
+            <Atras />
+            <BotonTema />
+            <Notificaciones />
+            {/* min-w-0 + truncate: un nombre largo estrujaba los botones de al
+                lado y les partia el texto, en vez de recortarse el. */}
+            <div className="min-w-0 text-right">
+              <p className="truncate text-sm font-medium">{usuario?.nombre}</p>
+              <p className="truncate text-xs text-marca">{ROLES[rol] ?? rol}</p>
+            </div>
+            <button onClick={salir} className="boton-suave shrink-0">Salir</button>
+          </div>
         </div>
       </header>
 
@@ -72,8 +82,8 @@ export function Disposicion() {
                       className={({ isActive }) =>
                         `block rounded-lg px-3 py-2 text-sm transition ${
                           isActive
-                            ? 'bg-amber-400/20 font-medium text-amber-200 shadow-inner'
-                            : 'text-slate-200 hover:bg-white/10'
+                            ? 'bg-marca-fondo/20 font-medium text-marca shadow-inner'
+                            : 'text-tinta-suave hover:bg-velo/10'
                         }`
                       }
                     >
@@ -83,11 +93,11 @@ export function Disposicion() {
                 ) : (
                   <li
                     key={m.ruta}
-                    className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-slate-500"
+                    className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-tinta-sutil"
                     title="Módulo previsto en el alcance, aún no construido"
                   >
                     {m.nombre}
-                    <span className="etiqueta bg-white/5 text-[10px] uppercase text-slate-400">
+                    <span className="etiqueta bg-velo/5 text-[10px] uppercase text-tinta-tenue">
                       pendiente
                     </span>
                   </li>

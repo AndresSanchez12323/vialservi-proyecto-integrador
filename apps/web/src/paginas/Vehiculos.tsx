@@ -1,44 +1,89 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { enviar, leerTarjeta, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
-import { MAX_VEHICULOS_CLIENTE } from '../comun/formato';
+import { enviar, juntarTarjeta, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
+import { CAMPOS_TARJETA, MAX_VEHICULOS_CLIENTE } from '../comun/formato';
+import { CapturaTarjeta } from '../comun/CapturaTarjeta';
 import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 type ClienteYo = Cliente & { vehiculos: Vehiculo[] };
 
-function LeerTarjeta({ alLeer }: { alLeer: (datos: DatosTarjeta) => void }) {
-  const [cargando, setCargando] = useState(false);
+/** Los cuatro datos que cualquiera sabe de su vehiculo sin mirar el documento. */
+type Basicos = { placa: string; marca: string; modelo: string; color: string };
+
+const BASICOS_VACIOS: Basicos = { placa: '', marca: '', modelo: '', color: '' };
+
+/** Lo que trae el documento y no se le pide a nadie de memoria. */
+const DEL_DOCUMENTO = CAMPOS_TARJETA.filter(
+  (c) => !['placa', 'marca', 'modelo', 'color'].includes(c.clave),
+);
+
+const basicosCompletos = (b: Basicos) =>
+  b.placa.trim().length >= 5 && b.marca.trim().length >= 2 &&
+  b.modelo.trim().length >= 2 && b.color.trim().length >= 3;
+
+/**
+ * Reparte lo leido de la tarjeta entre los campos del formulario.
+ *
+ * El campo «Línea o modelo» de la pantalla y los campos `linea` y `modelo` del
+ * documento no son lo mismo: para el documento la linea es «Corolla» y el
+ * modelo es el año. En la casilla que el usuario ve se pone lo que una persona
+ * escribiria ahi —la linea— y el año queda aparte, con el resto del documento.
+ *
+ * Solo rellena las casillas VACIAS. La lectura del reverso vuelve a llamar con
+ * todo lo acumulado, y si pisara lo que hay escrito desharia la correccion que
+ * la persona acabara de hacer a mano entre una foto y la otra.
+ */
+const repartir = (datos: DatosTarjeta, basicos: Basicos): Basicos => ({
+  placa: basicos.placa || datos.placa || '',
+  marca: basicos.marca || datos.marca || '',
+  modelo: basicos.modelo || datos.linea || datos.modelo || '',
+  color: basicos.color || datos.color || '',
+});
+
+/** Quita los campos vacios: mandar cadenas vacias borraria datos guardados. */
+const soloConValor = (datos: DatosTarjeta) =>
+  Object.fromEntries(
+    Object.entries(datos).filter(([, valor]) => typeof valor === 'string' && valor.trim() !== ''),
+  );
+
+/**
+ * Casillas de los datos del documento. Solo aparecen cuando la lectura de la
+ * tarjeta trajo alguno: a quien registra su carro de memoria no se le pone
+ * delante un VIN que no va a saber, que es la razon de que nunca se le hayan
+ * pedido.
+ */
+function CamposDocumento({
+  datos,
+  alCambiar,
+}: {
+  datos: DatosTarjeta;
+  alCambiar: (clave: keyof DatosTarjeta, valor: string) => void;
+}) {
+  const visibles = DEL_DOCUMENTO.filter(({ clave }) => datos[clave] !== undefined);
+  if (visibles.length === 0) return null;
 
   return (
-    <div className="space-y-2 sm:col-span-2">
-      <input
-        id="foto-tarjeta"
-        type="file"
-        accept="image/jpeg"
-        capture="environment"
-        className="sr-only"
-        onChange={async (e) => {
-          const archivo = e.target.files?.[0];
-          e.target.value = '';
-          if (!archivo) return;
-          setCargando(true);
-          try {
-            alLeer(await leerTarjeta(archivo));
-            avisoExito('Revise los datos y corrija lo que haga falta antes de guardar.', 'Tarjeta leida');
-          } catch (e) {
-            avisoError(e, 'No se pudo leer la tarjeta');
-          } finally {
-            setCargando(false);
-          }
-        }}
-      />
-      <label htmlFor="foto-tarjeta" className="boton-suave inline-flex cursor-pointer">
-        {cargando ? 'Leyendo tarjeta…' : '📷 Tomar foto de la tarjeta de propiedad'}
-      </label>
-      <p className="text-xs text-slate-400">
-        La foto se procesa con Amazon Textract y los datos quedan editables antes de guardar.
-      </p>
+    <div className="vidrio-suave space-y-3 p-4">
+      <div>
+        <p className="text-sm font-medium">Datos leídos del documento</p>
+        <p className="text-xs text-tinta-tenue">
+          Se guardan con el vehículo. Corrija lo que el lector haya entendido mal; el técnico los
+          confirma en el sitio con el documento en la mano.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {visibles.map(({ clave, etiqueta }) => (
+          <label key={clave} className="block min-w-0">
+            <span className="mb-1 block text-xs text-tinta-tenue">{etiqueta}</span>
+            <input
+              value={datos[clave] ?? ''}
+              onChange={(e) => alCambiar(clave, e.target.value)}
+              className="campo"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
@@ -50,16 +95,13 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
   const rol = sesion.rol();
   const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
 
-  const [placa, setPlaca] = useState('');
-  const [marca, setMarca] = useState('');
-  const [modelo, setModelo] = useState('');
-  const [color, setColor] = useState('');
+  const [basicos, setBasicos] = useState<Basicos>(BASICOS_VACIOS);
+  const [documento, setDocumento] = useState<DatosTarjeta>({});
   const [clienteId, setClienteId] = useState('');
-  const completar = (datos: DatosTarjeta) => {
-    setPlaca(datos.placa);
-    setMarca(datos.marca);
-    setModelo(datos.modelo);
-    setColor(datos.color);
+
+  const completar = (leido: DatosTarjeta) => {
+    setBasicos((anterior) => repartir(leido, anterior));
+    setDocumento((anterior) => juntarTarjeta(anterior, leido));
   };
 
   const { data: clientes } = useQuery({
@@ -71,7 +113,8 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
   const mutar = useMutation({
     mutationFn: () =>
       enviar<Vehiculo>('/vehiculos', 'POST', {
-        placa, marca, modelo, color,
+        ...basicos,
+        ...soloConValor(documento),
         ...(esCentral ? { clienteId } : {}),
       }),
     onSuccess: (v) => {
@@ -81,27 +124,25 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
     onError: (e) => avisoError(e, 'No se pudo registrar el vehiculo'),
   });
 
-  const completo =
-    placa.trim().length >= 5 && marca.trim().length >= 2 &&
-    modelo.trim().length >= 2 && color.trim().length >= 3 &&
-    (!esCentral || clienteId);
+  const completo = basicosCompletos(basicos) && (!esCentral || !!clienteId);
 
   return (
     <div className="vidrio space-y-3 p-5">
       <div>
         <p className="font-medium">Registrar un vehículo</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-tinta-tenue">
           Queda enlazado a su propietario y se puede elegir al solicitar un servicio.
         </p>
       </div>
 
+      <CapturaTarjeta alLeer={completar} />
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LeerTarjeta alLeer={completar} />
         {esCentral && (
           <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="campo sm:col-span-2">
-            <option value="" className="bg-slate-800">Propietario…</option>
+            <option value="">Propietario…</option>
             {(clientes ?? []).map((c) => (
-              <option key={c.id} value={c.id} className="bg-slate-800">
+              <option key={c.id} value={c.id}>
                 {c.nombre} · {c.documento}
               </option>
             ))}
@@ -109,16 +150,36 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         )}
 
         <input
-          value={placa}
-          onChange={(e) => setPlaca(e.target.value.toUpperCase())}
+          value={basicos.placa}
+          onChange={(e) => setBasicos({ ...basicos, placa: e.target.value.toUpperCase() })}
           className="campo font-mono"
           placeholder="Placa (ABC123)"
           maxLength={6}
         />
-        <input value={marca} onChange={(e) => setMarca(e.target.value)} className="campo" placeholder="Marca" />
-        <input value={modelo} onChange={(e) => setModelo(e.target.value)} className="campo" placeholder="Línea o modelo" />
-        <input value={color} onChange={(e) => setColor(e.target.value)} className="campo" placeholder="Color" />
+        <input
+          value={basicos.marca}
+          onChange={(e) => setBasicos({ ...basicos, marca: e.target.value })}
+          className="campo"
+          placeholder="Marca"
+        />
+        <input
+          value={basicos.modelo}
+          onChange={(e) => setBasicos({ ...basicos, modelo: e.target.value })}
+          className="campo"
+          placeholder="Línea o modelo"
+        />
+        <input
+          value={basicos.color}
+          onChange={(e) => setBasicos({ ...basicos, color: e.target.value })}
+          className="campo"
+          placeholder="Color"
+        />
       </div>
+
+      <CamposDocumento
+        datos={documento}
+        alCambiar={(clave, valor) => setDocumento((anterior) => ({ ...anterior, [clave]: valor }))}
+      />
 
       <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Guardando…' : 'Registrar vehículo'}
@@ -148,8 +209,13 @@ export function Vehiculos() {
     enabled: esCliente,
   });
 
-  const [formV, setFormV] = useState({ placa: '', marca: '', modelo: '', color: '' });
-  const completar = (datos: DatosTarjeta) => setFormV((anterior) => ({ ...anterior, ...datos }));
+  const [basicos, setBasicos] = useState<Basicos>(BASICOS_VACIOS);
+  const [documento, setDocumento] = useState<DatosTarjeta>({});
+
+  const completar = (leido: DatosTarjeta) => {
+    setBasicos((anterior) => repartir(leido, anterior));
+    setDocumento((anterior) => juntarTarjeta(anterior, leido));
+  };
 
   const refrescar = () => {
     cola.invalidateQueries({ queryKey: ['vehiculos'] });
@@ -157,9 +223,15 @@ export function Vehiculos() {
   };
 
   const crearVehiculo = useMutation({
-    mutationFn: () => enviar<Vehiculo>('/vehiculos', 'POST', { ...formV, clienteId: yo?.id }),
+    mutationFn: () =>
+      enviar<Vehiculo>('/vehiculos', 'POST', {
+        ...basicos,
+        ...soloConValor(documento),
+        clienteId: yo?.id,
+      }),
     onSuccess: async (v) => {
-      setFormV({ placa: '', marca: '', modelo: '', color: '' });
+      setBasicos(BASICOS_VACIOS);
+      setDocumento({});
       refrescar();
       // Registrar un vehiculo casi siempre es el paso previo a pedir algo,
       // asi que se ofrece el atajo en vez de dejarlo buscar el formulario.
@@ -203,7 +275,7 @@ export function Vehiculos() {
         <h2 className="text-xl font-semibold">
           {esCliente ? 'Mis vehículos' : 'Gestionar vehículo e inventario'}
         </h2>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-tinta-tenue">
           {esCliente
             ? 'Registre sus vehículos y después solicite el servicio que necesite.'
             : 'El vehículo es el punto de partida: sin vehículo no hay servicio.'}
@@ -214,35 +286,43 @@ export function Vehiculos() {
         <section className="vidrio space-y-3 p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">Agregar un nuevo vehículo</h3>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-tinta-tenue">
               {cuantos} de {MAX_VEHICULOS_CLIENTE} registrados
             </span>
           </div>
 
           {enElTope ? (
-            <p className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            <p className="rounded-lg border border-marca/30 bg-marca-fondo/10 px-3 py-2 text-sm text-marca">
               Ya tiene {MAX_VEHICULOS_CLIENTE} vehículos registrados, que es el máximo por cuenta.
               Si necesita otro, comuníquese con la central.
             </p>
           ) : (
             <>
+              <CapturaTarjeta
+                alLeer={completar}
+                nota="Si tiene a mano la tarjeta de propiedad, fotografíela y los datos se llenan solos."
+              />
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <LeerTarjeta alLeer={completar} />
-                <input value={formV.placa} onChange={(e) => setFormV({ ...formV, placa: e.target.value.toUpperCase() })} placeholder="Placa (ej: ABC123)" className="campo font-mono" maxLength={6} />
-                <input value={formV.marca} onChange={(e) => setFormV({ ...formV, marca: e.target.value })} placeholder="Marca" className="campo" />
-                <input value={formV.modelo} onChange={(e) => setFormV({ ...formV, modelo: e.target.value })} placeholder="Línea o modelo" className="campo" />
-                <input value={formV.color} onChange={(e) => setFormV({ ...formV, color: e.target.value })} placeholder="Color" className="campo" />
+                <input value={basicos.placa} onChange={(e) => setBasicos({ ...basicos, placa: e.target.value.toUpperCase() })} placeholder="Placa (ej: ABC123)" className="campo font-mono" maxLength={6} />
+                <input value={basicos.marca} onChange={(e) => setBasicos({ ...basicos, marca: e.target.value })} placeholder="Marca" className="campo" />
+                <input value={basicos.modelo} onChange={(e) => setBasicos({ ...basicos, modelo: e.target.value })} placeholder="Línea o modelo" className="campo" />
+                <input value={basicos.color} onChange={(e) => setBasicos({ ...basicos, color: e.target.value })} placeholder="Color" className="campo" />
               </div>
-              <p className="text-xs text-slate-400">
-                No le pedimos el VIN ni el número de la tarjeta de propiedad: esos datos los
-                toma el técnico en el sitio, con el documento en la mano.
+
+              <CamposDocumento
+                datos={documento}
+                alCambiar={(clave, valor) => setDocumento((anterior) => ({ ...anterior, [clave]: valor }))}
+              />
+
+              <p className="text-xs text-tinta-tenue">
+                Solo le pedimos los cuatro datos de arriba. El VIN y el número de la tarjeta de
+                propiedad no hace falta buscarlos: salen de la foto, o los toma el técnico en el
+                sitio con el documento en la mano.
               </p>
               <button
                 className="boton"
-                disabled={
-                  crearVehiculo.isPending || formV.placa.length < 5 || formV.marca.length < 2 ||
-                  formV.modelo.length < 2 || formV.color.length < 3
-                }
+                disabled={crearVehiculo.isPending || !basicosCompletos(basicos)}
                 onClick={() => crearVehiculo.mutate()}
               >
                 {crearVehiculo.isPending ? 'Agregando…' : 'Agregar vehículo'}
@@ -271,24 +351,33 @@ export function Vehiculos() {
         />
       )}
 
-      {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
-      {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
+      {isLoading && <p className="text-sm text-tinta-tenue">Cargando…</p>}
+      {error && <p className="text-sm text-riesgo">{(error as Error).message}</p>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.map((v) => (
-          <article key={v.id} className="vidrio p-5">
-            <p className="font-mono text-lg text-amber-300">{v.placa}</p>
+          <article key={v.id} className="vidrio min-w-0 p-5">
+            <p className="font-mono text-lg text-marca">{v.placa}</p>
             <p className="mt-1 text-sm">{v.marca} {v.modelo}</p>
-            <p className="text-sm text-slate-400">Color {v.color.toLowerCase()}</p>
+            <p className="text-sm text-tinta-tenue">Color {v.color.toLowerCase()}</p>
 
-            {/* Lo que el tecnico completo con la tarjeta de propiedad. Si esta
-                vacio, es que ese vehiculo aun no ha pasado por un servicio. */}
+            {/* Lo que vino de la tarjeta de propiedad, sea de la foto del
+                cliente o de lo que el tecnico tomo en sitio. Si esta vacio, al
+                vehiculo le falta el documento. */}
             {(v.vin || v.licenciaTransito) && (
-              <dl className="mt-3 space-y-0.5 border-t border-white/10 pt-2 text-xs text-slate-400">
+              <dl className="mt-3 space-y-0.5 border-t border-velo/10 pt-2 text-xs text-tinta-tenue">
                 {v.licenciaTransito && (
-                  <div className="flex justify-between"><dt>Lic. tránsito</dt><dd className="font-mono">{v.licenciaTransito}</dd></div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="shrink-0">Lic. tránsito</dt>
+                    <dd className="min-w-0 break-all text-right font-mono">{v.licenciaTransito}</dd>
+                  </div>
                 )}
-                {v.vin && <div className="flex justify-between"><dt>VIN</dt><dd className="font-mono">{v.vin}</dd></div>}
+                {v.vin && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="shrink-0">VIN</dt>
+                    <dd className="min-w-0 break-all text-right font-mono">{v.vin}</dd>
+                  </div>
+                )}
               </dl>
             )}
 
@@ -302,7 +391,7 @@ export function Vehiculos() {
                   Solicitar servicio →
                 </button>
                 <button
-                  className="w-full rounded-lg border border-rose-400/30 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/10 disabled:opacity-50"
+                  className="w-full rounded-lg border border-riesgo/30 px-3 py-2 text-sm text-riesgo transition hover:bg-riesgo-fondo/10 disabled:opacity-50"
                   disabled={eliminarVehiculo.isPending}
                   onClick={() => pedirEliminar(v)}
                 >
@@ -310,14 +399,14 @@ export function Vehiculos() {
                 </button>
               </div>
             ) : (
-              <p className="mt-3 border-t border-white/10 pt-3 text-sm">
-                <span className="text-slate-400">Propietario: </span>
+              <p className="mt-3 border-t border-velo/10 pt-3 text-sm">
+                <span className="text-tinta-tenue">Propietario: </span>
                 {v.cliente?.nombre ?? '—'}
               </p>
             )}
           </article>
         ))}
-        {data?.length === 0 && <p className="text-sm text-slate-400">Sin resultados.</p>}
+        {data?.length === 0 && <p className="text-sm text-tinta-tenue">Sin resultados.</p>}
       </div>
 
     </div>

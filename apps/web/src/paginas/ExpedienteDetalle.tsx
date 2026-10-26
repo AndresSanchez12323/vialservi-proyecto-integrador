@@ -1,15 +1,59 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { enviar, pedir, sesion, type Expediente } from '../comun/api';
+import { enviar, pedir, sesion, type DatosTarjeta, type Expediente } from '../comun/api';
 import { Atras } from '../comun/Atras';
+import { CapturaTarjeta } from '../comun/CapturaTarjeta';
 import { Mapa } from '../comun/Mapa';
 import { SubirEvidencia } from '../comun/SubirEvidencia';
 import { VistaEvidencia } from '../comun/VistaEvidencia';
-import { CATEGORIAS, ESTADOS, TIPOS, fecha, haceCuanto } from '../comun/formato';
+import { CATEGORIAS, ESTADOS, TIPOS, etiquetaTarjeta, fecha, haceCuanto } from '../comun/formato';
 import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 const idLocal = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+/**
+ * Casillas del documento que diligencia el tecnico. Son las del vehiculo que
+ * NO se le pidieron al cliente, mas los datos del propietario segun el
+ * documento. La placa, la marca, el modelo y el color no estan: esos ya
+ * identifican al vehiculo del servicio, y cambiarlos aqui seria cambiar de
+ * vehiculo a mitad de un expediente.
+ */
+const CLAVES_DOCUMENTO = [
+  'linea', 'clase', 'licenciaTransito', 'vin', 'chasis', 'motor',
+  'propietarioNombre', 'propietarioDocumento',
+] as const;
+
+type DatosDocumento = Record<(typeof CLAVES_DOCUMENTO)[number], string>;
+
+// Las etiquetas salen de la lista compartida: el lector de la tarjeta nombra
+// los campos igual que este formulario.
+const CAMPOS_DOCUMENTO = CLAVES_DOCUMENTO.map((clave) => ({
+  clave,
+  etiqueta: etiquetaTarjeta(clave),
+}));
+
+/** Compara lo leido en el documento con el vehiculo que figura en el servicio. */
+const compararConVehiculo = (
+  leido: DatosTarjeta,
+  vehiculo: { placa: string; marca: string; modelo: string; color: string },
+): string[] => {
+  const igual = (a?: string, b?: string) =>
+    !a || !b || a.trim().toLowerCase() === b.trim().toLowerCase();
+  const avisos: string[] = [];
+  // La placa es la que importa de verdad: si no es la misma, el documento es
+  // de otro vehiculo y eso no lo arregla nadie corrigiendo una casilla.
+  if (leido.placa && !igual(leido.placa, vehiculo.placa)) {
+    avisos.push(`La placa del documento es ${leido.placa} y el servicio es de ${vehiculo.placa}.`);
+  }
+  if (leido.marca && !igual(leido.marca, vehiculo.marca)) {
+    avisos.push(`La marca del documento es ${leido.marca} y la registrada es ${vehiculo.marca}.`);
+  }
+  if (leido.color && !igual(leido.color, vehiculo.color)) {
+    avisos.push(`El color del documento es ${leido.color} y el registrado es ${vehiculo.color}.`);
+  }
+  return avisos;
+};
 
 /**
  * Verificacion de quien entrega el vehiculo. La hace el TECNICO en sitio.
@@ -33,11 +77,32 @@ function Verificacion({
   const [documento, setDocumento] = useState(exp.solicitanteDocumento ?? '');
   const [relacion, setRelacion] = useState(exp.solicitanteRelacion ?? '');
   const v = exp.servicio.vehiculo;
-  const [doc, setDoc] = useState({
+  const [doc, setDoc] = useState<DatosDocumento>({
     linea: v.linea ?? '', clase: v.clase ?? '', licenciaTransito: v.licenciaTransito ?? '',
     vin: v.vin ?? '', chasis: v.chasis ?? '', motor: v.motor ?? '',
     propietarioNombre: v.propietarioNombre ?? '', propietarioDocumento: v.propietarioDocumento ?? '',
   });
+  const [discrepancias, setDiscrepancias] = useState<string[]>([]);
+
+  /** El vehiculo llega sin documento cuando el cliente lo registro a mano. */
+  const tieneDocumento = !!(v.licenciaTransito || v.vin || v.linea);
+
+  /**
+   * Lo leido de la tarjeta entra en las casillas SIN pisar lo que el tecnico
+   * ya haya escrito: si corrigió a mano un VIN que el lector entendio mal, una
+   * segunda foto no puede deshacer esa correccion.
+   */
+  const completarDesdeTarjeta = (leido: DatosTarjeta) => {
+    setDoc((anterior) => {
+      const siguiente = { ...anterior };
+      for (const { clave } of CAMPOS_DOCUMENTO) {
+        const valor = leido[clave]?.trim();
+        if (valor && !siguiente[clave].trim()) siguiente[clave] = valor;
+      }
+      return siguiente;
+    });
+    setDiscrepancias(compararConVehiculo(leido, v));
+  };
 
   const guardar = useMutation({
     mutationFn: () =>
@@ -64,7 +129,7 @@ function Verificacion({
   return (
     <section className="vidrio p-6">
       <h3 className="font-medium">Quién entrega el vehículo</h3>
-      <p className="mt-1 text-xs text-slate-400">
+      <p className="mt-1 text-xs text-tinta-tenue">
         Compare la persona y el documento con los datos del expediente antes de la maniobra.
         Si hay diferencias, suspenda e informe a la central con una novedad.
       </p>
@@ -75,8 +140,8 @@ function Verificacion({
           onClick={() => setEsPropietario(true)}
           className={`rounded-lg px-4 py-2 text-sm transition ${
             esPropietario === true
-              ? 'bg-emerald-400/20 font-medium text-emerald-200 ring-1 ring-emerald-300/40'
-              : 'bg-white/10 text-slate-200 hover:bg-white/20'
+              ? 'bg-exito-fondo/20 font-medium text-exito ring-1 ring-exito/40'
+              : 'bg-velo/10 text-tinta-suave hover:bg-velo/20'
           }`}
         >
           Sí, es el propietario
@@ -86,8 +151,8 @@ function Verificacion({
           onClick={() => setEsPropietario(false)}
           className={`rounded-lg px-4 py-2 text-sm transition ${
             esPropietario === false
-              ? 'bg-amber-400/20 font-medium text-amber-200 ring-1 ring-amber-300/40'
-              : 'bg-white/10 text-slate-200 hover:bg-white/20'
+              ? 'bg-marca-fondo/20 font-medium text-marca ring-1 ring-marca/40'
+              : 'bg-velo/10 text-tinta-suave hover:bg-velo/20'
           }`}
         >
           No es el propietario
@@ -95,8 +160,8 @@ function Verificacion({
       </div>
 
       {esPropietario === false && (
-        <div className="mt-4 space-y-3 rounded-xl border border-amber-300/30 bg-amber-400/[0.07] p-4">
-          <p className="text-sm font-medium text-amber-200">Datos de quien entrega</p>
+        <div className="mt-4 space-y-3 rounded-xl border border-marca/30 bg-marca-fondo/[0.07] p-4">
+          <p className="text-sm font-medium text-marca">Datos de quien entrega</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="campo" placeholder="Nombre completo" />
             <input value={documento} onChange={(e) => setDocumento(e.target.value)} className="campo font-mono" placeholder="Número de cédula" />
@@ -111,8 +176,8 @@ function Verificacion({
           <div
             className={`rounded-lg border px-3 py-2 text-xs ${
               tieneFirma
-                ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
-                : 'border-rose-400/30 bg-rose-500/10 text-rose-200'
+                ? 'border-exito/30 bg-exito-fondo/10 text-exito'
+                : 'border-riesgo/30 bg-riesgo-fondo/10 text-riesgo'
             }`}
           >
             {tieneFirma
@@ -120,34 +185,60 @@ function Verificacion({
               : 'Obligatorio: suba abajo una foto de la cédula con la firma de autorización, en la categoría «Cédula con firma». Sin ella no se puede marcar el servicio como terminado.'}
           </div>
 
-          <p className="text-[11px] text-amber-200/70">
+          <p className="text-[11px] text-marca/70">
             Este registro no certifica la propiedad del vehículo ni descarta un reporte de hurto:
             VialServi no hace esa comprobación. Solo queda constancia de quién autorizó.
           </p>
         </div>
       )}
 
-      <details className="mt-4">
-        <summary className="cursor-pointer text-sm text-slate-300 hover:text-slate-100">
+      {/* Abierto por omision cuando el vehiculo todavia no tiene documento: es
+          justo el caso en el que el tecnico TIENE que diligenciarlo, y
+          esconderlo tras un desplegable es esconder el trabajo pendiente. */}
+      <details className="mt-4" open={!tieneDocumento}>
+        <summary className="cursor-pointer text-sm text-tinta-suave hover:text-tinta">
           Datos de la licencia de tránsito (tarjeta de propiedad)
+          {!tieneDocumento && (
+            <span className="etiqueta ml-2 border border-marca/40 bg-marca-fondo/15 text-marca">
+              sin registrar
+            </span>
+          )}
         </summary>
-        <p className="mt-2 text-xs text-slate-400">
-          Tómelos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo
-          vacío: no lo complete con supuestos.
+        <p className="mt-2 text-xs text-tinta-tenue">
+          {tieneDocumento
+            ? 'Compruebe que coinciden con el documento que tiene en la mano y corrija lo que esté mal.'
+            : 'El cliente registró el vehículo sin la tarjeta de propiedad. Fotografíela usted, o tome los datos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo vacío: no lo complete con supuestos.'}
         </p>
+
+        {/* El tecnico lee la tarjeta con la misma camara y el mismo recorrido
+            de dos caras que el cliente. El reverso importa especialmente aqui:
+            es el lado que trae al propietario. */}
+        <CapturaTarjeta
+          className="mt-3"
+          alLeer={completarDesdeTarjeta}
+          nota="Dos fotos, frente y reverso. Lo leído llena las casillas de abajo y usted lo corrige antes de guardar."
+        />
+
+        {discrepancias.length > 0 && (
+          <div className="mt-3 rounded-lg border border-riesgo/40 bg-riesgo-fondo/10 px-3 py-2 text-xs text-riesgo">
+            <p className="font-medium">
+              El documento no coincide con el vehículo registrado en el servicio:
+            </p>
+            <ul className="mt-1 list-disc pl-5">
+              {discrepancias.map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+            <p className="mt-1">
+              No siga con la maniobra hasta aclararlo: registre una novedad e informe a la central.
+            </p>
+          </div>
+        )}
+
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {([
-            ['linea', 'Línea'],
-            ['clase', 'Clase de vehículo'],
-            ['licenciaTransito', 'N.º licencia de tránsito'],
-            ['vin', 'VIN'],
-            ['chasis', 'Chasis'],
-            ['motor', 'Motor'],
-            ['propietarioNombre', 'Propietario según el documento'],
-            ['propietarioDocumento', 'Documento del propietario'],
-          ] as const).map(([clave, etiqueta]) => (
-            <label key={clave} className="block">
-              <span className="mb-1 block text-xs text-slate-400">{etiqueta}</span>
+          {CAMPOS_DOCUMENTO.map(({ clave, etiqueta }) => (
+            <label key={clave} className="block min-w-0">
+              <span className="mb-1 block text-xs text-tinta-tenue">{etiqueta}</span>
               <input
                 value={doc[clave]}
                 onChange={(e) => setDoc({ ...doc, [clave]: e.target.value })}
@@ -159,7 +250,7 @@ function Verificacion({
       </details>
 
       {faltanDatos && (
-        <p className="mt-3 text-xs text-amber-200">
+        <p className="mt-3 text-xs text-marca">
           Si no es el propietario, el nombre y el documento de quien entrega son obligatorios.
         </p>
       )}
@@ -172,7 +263,7 @@ function Verificacion({
         {guardar.isPending ? 'Guardando…' : 'Guardar verificación'}
       </button>
       {exp.verificadoEn && (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-tinta-sutil">
           Última verificación: {fecha(exp.verificadoEn)} (versión {exp.verificacionVersion})
         </p>
       )}
@@ -217,13 +308,13 @@ function Inventario({
 
   return (
     <form
-      className="mt-3 space-y-2 border-t border-white/10 pt-3"
+      className="mt-3 space-y-2 border-t border-velo/10 pt-3"
       onSubmit={(e) => {
         e.preventDefault();
         agregar.mutate();
       }}
     >
-      <p className="text-xs uppercase tracking-wide text-slate-400">Agregar objeto</p>
+      <p className="text-xs uppercase tracking-wide text-tinta-tenue">Agregar objeto</p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_5rem]">
         <input
           value={descripcion}
@@ -351,8 +442,8 @@ export function ExpedienteDetalle() {
     if (seguro) terminar.mutate();
   };
 
-  if (isLoading) return <p className="text-sm text-slate-400">Cargando expediente…</p>;
-  if (error) return <p className="text-sm text-rose-300">{(error as Error).message}</p>;
+  if (isLoading) return <p className="text-sm text-tinta-tenue">Cargando expediente…</p>;
+  if (error) return <p className="text-sm text-riesgo">{(error as Error).message}</p>;
   if (!data) return null;
 
   const s = data.servicio;
@@ -377,16 +468,16 @@ export function ExpedienteDetalle() {
       <header className="vidrio p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-sm text-amber-300">{data.consecutivo}</p>
+            <p className="font-mono text-sm text-marca">{data.consecutivo}</p>
             <h2 className="mt-1 text-xl font-semibold">{s.descripcion}</h2>
-            <p className="text-sm text-slate-400">{s.direccion}</p>
+            <p className="text-sm text-tinta-tenue">{s.direccion}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className={`etiqueta ${ESTADOS[s.estado]?.clase ?? ''}`}>{ESTADOS[s.estado]?.texto}</span>
-            {s.tipo && <span className="etiqueta border border-white/20 bg-white/10">{TIPOS[s.tipo]}</span>}
+            {s.tipo && <span className="etiqueta border border-velo/20 bg-velo/10">{TIPOS[s.tipo]}</span>}
             {data.formato && (
               <span
-                className="etiqueta border border-white/15 bg-white/5 text-slate-300"
+                className="etiqueta border border-velo/15 bg-velo/5 text-tinta-suave"
                 title="Versión del formato con la que se diligenció este expediente"
               >
                 formato v{data.formatoVersion}
@@ -396,37 +487,39 @@ export function ExpedienteDetalle() {
         </div>
 
         {/* El expediente concentra y enlaza: no duplica los datos */}
-        <div className="mt-5 grid grid-cols-1 gap-4 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-5 grid grid-cols-1 gap-4 border-t border-velo/10 pt-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <p className="text-xs uppercase text-slate-500">Vehículo</p>
-            <p className="font-mono text-amber-300">{s.vehiculo.placa}</p>
-            <p className="text-sm text-slate-300">{s.vehiculo.marca} {s.vehiculo.modelo} · {s.vehiculo.color}</p>
-            {s.vehiculo.vin && <p className="mt-1 font-mono text-[11px] text-slate-500">VIN {s.vehiculo.vin}</p>}
-          </div>
-          <div>
-            <p className="text-xs uppercase text-slate-500">Cliente</p>
-            <p className="text-sm">{s.cliente.nombre}</p>
-            <p className="text-sm text-slate-400">{s.contactoTelefono ?? s.cliente.telefono}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase text-slate-500">Técnico</p>
-            <p className="text-sm">{s.tecnico?.nombre ?? 'sin asignar'}</p>
-            {s.tecnico?.ubicacionEn && (
-              <p className="text-xs text-slate-500">ubicación {haceCuanto(s.tecnico.ubicacionEn)}</p>
+            <p className="text-xs uppercase text-tinta-sutil">Vehículo</p>
+            <p className="font-mono text-marca">{s.vehiculo.placa}</p>
+            <p className="text-sm text-tinta-suave">{s.vehiculo.marca} {s.vehiculo.modelo} · {s.vehiculo.color}</p>
+            {s.vehiculo.vin && (
+              <p className="mt-1 break-all font-mono text-[11px] text-tinta-sutil">VIN {s.vehiculo.vin}</p>
             )}
           </div>
           <div>
-            <p className="text-xs uppercase text-slate-500">Quién entregó</p>
+            <p className="text-xs uppercase text-tinta-sutil">Cliente</p>
+            <p className="text-sm">{s.cliente.nombre}</p>
+            <p className="text-sm text-tinta-tenue">{s.contactoTelefono ?? s.cliente.telefono}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase text-tinta-sutil">Técnico</p>
+            <p className="text-sm">{s.tecnico?.nombre ?? 'sin asignar'}</p>
+            {s.tecnico?.ubicacionEn && (
+              <p className="text-xs text-tinta-sutil">ubicación {haceCuanto(s.tecnico.ubicacionEn)}</p>
+            )}
+          </div>
+          <div>
+            <p className="text-xs uppercase text-tinta-sutil">Quién entregó</p>
             {data.esPropietario === null ? (
-              <p className="text-sm text-amber-200">sin verificar</p>
+              <p className="text-sm text-marca">sin verificar</p>
             ) : data.esPropietario ? (
-              <p className="text-sm text-emerald-200">el propietario</p>
+              <p className="text-sm text-exito">el propietario</p>
             ) : (
               <>
-                <p className="text-sm text-amber-200">{data.solicitanteNombre}</p>
-                <p className="font-mono text-xs text-slate-400">CC {data.solicitanteDocumento}</p>
+                <p className="text-sm text-marca">{data.solicitanteNombre}</p>
+                <p className="font-mono text-xs text-tinta-tenue">CC {data.solicitanteDocumento}</p>
                 {data.solicitanteRelacion && (
-                  <p className="text-[11px] text-slate-500">{data.solicitanteRelacion}</p>
+                  <p className="text-[11px] text-tinta-sutil">{data.solicitanteRelacion}</p>
                 )}
               </>
             )}
@@ -438,21 +531,21 @@ export function ExpedienteDetalle() {
           cuando la central le rebote el cierre. */}
       {!cerrado && (
         <section
-          className={`vidrio p-6 ${control.listoParaCerrar ? '' : 'border-amber-300/30'}`}
+          className={`vidrio p-6 ${control.listoParaCerrar ? '' : 'border-marca/30'}`}
         >
           <h3 className="font-medium">
             {control.listoParaCerrar ? '✓ Expediente completo' : 'Falta para poder cerrar'}
           </h3>
           {control.listoParaCerrar ? (
-            <p className="mt-1 text-sm text-emerald-200">
+            <p className="mt-1 text-sm text-exito">
               Tiene todo lo que exige el formato{data.formato ? ` de ${data.formato.nombre.toLowerCase()}` : ''}.
               La central ya puede cerrarlo.
             </p>
           ) : (
             <ul className="mt-3 space-y-1.5">
               {control.avisos.map((a) => (
-                <li key={a} className="flex items-start gap-2 text-sm text-amber-100">
-                  <span className="mt-0.5 text-amber-300">○</span>
+                <li key={a} className="flex items-start gap-2 text-sm text-marca">
+                  <span className="mt-0.5 text-marca">○</span>
                   <span>{a}</span>
                 </li>
               ))}
@@ -460,8 +553,8 @@ export function ExpedienteDetalle() {
           )}
 
           {data.formato && (
-            <div className="mt-4 border-t border-white/10 pt-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">
+            <div className="mt-4 border-t border-velo/10 pt-3">
+              <p className="text-xs uppercase tracking-wide text-tinta-sutil">
                 Evidencias que exige {data.formato.nombre.toLowerCase()}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -473,8 +566,8 @@ export function ExpedienteDetalle() {
                       key={r.categoria + r.etiqueta}
                       className={`etiqueta border ${
                         ok
-                          ? 'border-emerald-300/30 bg-emerald-400/15 text-emerald-200'
-                          : 'border-amber-300/30 bg-amber-400/10 text-amber-200'
+                          ? 'border-exito/30 bg-exito-fondo/15 text-exito'
+                          : 'border-marca/30 bg-marca-fondo/10 text-marca'
                       }`}
                     >
                       {ok ? '✓' : '○'} {r.etiqueta} ({hay}/{r.minimo})
@@ -493,22 +586,22 @@ export function ExpedienteDetalle() {
       {/* Terminar la atencion sin salir del expediente. En la lista de
           servicios sigue estando el boton: quedan las dos vias. */}
       {esTecnico && !cerrado && s.estado === 'EN_EJECUCION' && (
-        <section className="vidrio border-amber-300/30 p-6">
+        <section className="vidrio border-marca/30 p-6">
           <h3 className="font-medium">Terminar la atención</h3>
           {faltanParaTerminar.length > 0 ? (
             <>
-              <p className="mt-1 text-sm text-amber-100">Antes de terminar faltan evidencias:</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-100">
+              <p className="mt-1 text-sm text-marca">Antes de terminar faltan evidencias:</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-marca">
                 {faltanParaTerminar.map((f) => (
                   <li key={f}>{f}</li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-slate-400">
+              <p className="mt-2 text-xs text-tinta-tenue">
                 Súbalas en la sección de evidencias de esta misma página y vuelva aquí.
               </p>
             </>
           ) : (
-            <p className="mt-1 text-sm text-slate-300">
+            <p className="mt-1 text-sm text-tinta-suave">
               Está todo lo que exige el formato. Al marcar terminado se avisa a la
               central para que revise y cierre el expediente.
             </p>
@@ -529,7 +622,7 @@ export function ExpedienteDetalle() {
       )}
       {esTecnico && !cerrado && s.estado === 'TERMINADO' && (
         <section className="vidrio p-6">
-          <p className="text-sm text-emerald-200">
+          <p className="text-sm text-exito">
             ✓ Servicio marcado como terminado. Queda en manos de la central revisarlo y cerrar el expediente.
           </p>
         </section>
@@ -551,11 +644,11 @@ export function ExpedienteDetalle() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="vidrio p-6">
           <h3 className="mb-1 font-medium">Observaciones del técnico</h3>
-          <p className="mb-3 text-xs text-slate-500">
+          <p className="mb-3 text-xs text-tinta-sutil">
             Versión {data.observacionesVersion} · campo del técnico: la central no lo escribe
           </p>
           {data.formato && esTecnico && (
-            <p className="mb-2 text-xs text-slate-400">
+            <p className="mb-2 text-xs text-tinta-tenue">
               Para {data.formato.nombre.toLowerCase()} registre:{' '}
               {data.formato.campos.map((c) => c.etiqueta.toLowerCase()).join(', ')}.
             </p>
@@ -577,16 +670,16 @@ export function ExpedienteDetalle() {
 
         <section className="vidrio p-6">
           <h3 className="mb-1 font-medium">Inventario del vehículo</h3>
-          <p className="mb-3 text-xs text-slate-500">Lo que iba dentro cuando se recibió</p>
+          <p className="mb-3 text-xs text-tinta-sutil">Lo que iba dentro cuando se recibió</p>
           <ul className="space-y-2">
             {s.vehiculo.inventario?.map((o) => (
               <li key={o.id} className="vidrio-suave flex justify-between px-3 py-2 text-sm">
                 <span>{o.descripcion}</span>
-                <span className="text-slate-400">×{o.cantidad}</span>
+                <span className="text-tinta-tenue">×{o.cantidad}</span>
               </li>
             ))}
             {!s.vehiculo.inventario?.length && (
-              <li className="text-sm text-slate-500">Sin objetos registrados.</li>
+              <li className="text-sm text-tinta-sutil">Sin objetos registrados.</li>
             )}
           </ul>
           <Inventario
@@ -601,7 +694,7 @@ export function ExpedienteDetalle() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="font-medium">Evidencias ({data.evidencias.length})</h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-tinta-sutil">
               Cada archivo queda con su autor y su hora de captura.
             </p>
           </div>
@@ -609,7 +702,7 @@ export function ExpedienteDetalle() {
 
         {(esTecnico || esCliente) && (
           <div className="vidrio-suave mb-4 space-y-3 p-4">
-            <p className="text-xs uppercase tracking-wide text-slate-400">¿Qué prueba esta evidencia?</p>
+            <p className="text-xs uppercase tracking-wide text-tinta-tenue">¿Qué prueba esta evidencia?</p>
             <div className="flex flex-wrap gap-2">
               {categoriasDisponibles.map((c) => (
                 <button
@@ -618,8 +711,8 @@ export function ExpedienteDetalle() {
                   onClick={() => setCategoria(c)}
                   className={`etiqueta border transition ${
                     categoria === c
-                      ? CATEGORIAS[c].clase + ' ring-1 ring-white/40'
-                      : 'border-white/15 bg-white/5 text-slate-300 hover:bg-white/10'
+                      ? CATEGORIAS[c].clase + ' ring-1 ring-velo/40'
+                      : 'border-velo/15 bg-velo/5 text-tinta-suave hover:bg-velo/10'
                   }`}
                 >
                   {CATEGORIAS[c].texto}
@@ -639,7 +732,7 @@ export function ExpedienteDetalle() {
             <VistaEvidencia key={ev.id} evidencia={ev} expedienteId={data.id} />
           ))}
           {data.evidencias.length === 0 && (
-            <p className="text-sm text-slate-500">Todavía no hay evidencias.</p>
+            <p className="text-sm text-tinta-sutil">Todavía no hay evidencias.</p>
           )}
         </div>
       </section>
@@ -650,14 +743,16 @@ export function ExpedienteDetalle() {
           {data.novedades.map((n) => (
             <li key={n.id} className="vidrio-suave px-4 py-3 text-sm">
               <p>{n.descripcion}</p>
-              <p className="mt-1 text-xs text-slate-500">{fecha(n.ocurridaEn)}</p>
+              <p className="mt-1 text-xs text-tinta-sutil">{fecha(n.ocurridaEn)}</p>
             </li>
           ))}
-          {data.novedades.length === 0 && <li className="text-sm text-slate-500">Sin novedades.</li>}
+          {data.novedades.length === 0 && <li className="text-sm text-tinta-sutil">Sin novedades.</li>}
         </ul>
 
         {(esTecnico || esCentral) && (
-          <div className="flex gap-2">
+          /* flex-wrap y shrink-0: en un telefono el boton no tiene donde caber
+             al lado del campo, y sin envoltura se le estrujaba el texto. */
+          <div className="flex flex-wrap gap-2">
             <input
               value={novedad}
               onChange={(e) => setNovedad(e.target.value)}
@@ -665,7 +760,7 @@ export function ExpedienteDetalle() {
               placeholder="Registrar una novedad del servicio…"
             />
             <button
-              className="boton"
+              className="boton shrink-0"
               disabled={novedad.length < 3 || agregarNovedad.isPending}
               onClick={() => agregarNovedad.mutate()}
             >
@@ -678,7 +773,7 @@ export function ExpedienteDetalle() {
       {esCentral && (
         <section className="vidrio p-6">
           <h3 className="font-medium">Revisión y cierre de la central</h3>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-tinta-tenue">
             Solo la central cierra. Se exige que el técnico haya marcado el servicio como
             terminado, que la verificación esté hecha y que estén las evidencias del formato:
             quien presta el servicio no declara cerrada la evidencia de que existió.
@@ -709,7 +804,7 @@ export function ExpedienteDetalle() {
               {cerrado ? `Cerrado el ${fecha(data.cerradoEn)}` : 'Cerrar expediente'}
             </button>
             {!cerrado && !control.listoParaCerrar && (
-              <p className="mt-2 text-xs text-amber-200">
+              <p className="mt-2 text-xs text-marca">
                 No se puede cerrar todavía: {control.avisos.join('; ')}.
               </p>
             )}
@@ -720,13 +815,13 @@ export function ExpedienteDetalle() {
       {cerrado && !esCentral && (
         <section className="vidrio p-6">
           <h3 className="font-medium">Expediente cerrado</h3>
-          <p className="mt-1 text-sm text-slate-300">
+          <p className="mt-1 text-sm text-tinta-suave">
             Cerrado el {fecha(data.cerradoEn)}. Las evidencias quedan conservadas y una que
             llegue después se acepta, pero queda marcada como posterior al cierre.
           </p>
           {data.revisionCentral && (
-            <p className="mt-3 vidrio-suave px-4 py-3 text-sm text-slate-300">
-              <span className="text-slate-400">Revisión de la central: </span>
+            <p className="mt-3 vidrio-suave px-4 py-3 text-sm text-tinta-suave">
+              <span className="text-tinta-tenue">Revisión de la central: </span>
               {data.revisionCentral}
             </p>
           )}

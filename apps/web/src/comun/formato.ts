@@ -1,11 +1,13 @@
+import type { DatosTarjeta } from './api';
+
 export const ESTADOS: Record<string, { texto: string; clase: string }> = {
-  SOLICITADO:   { texto: 'Solicitado',   clase: 'bg-slate-400/20 text-slate-200 border border-slate-300/30' },
-  ASIGNADO:     { texto: 'Asignado',     clase: 'bg-sky-400/20 text-sky-200 border border-sky-300/30' },
-  EN_EJECUCION: { texto: 'En ejecución', clase: 'bg-amber-400/20 text-amber-200 border border-amber-300/30' },
-  TERMINADO:    { texto: 'Terminado',    clase: 'bg-violet-400/20 text-violet-200 border border-violet-300/30' },
-  CERRADO:      { texto: 'Cerrado',      clase: 'bg-emerald-400/20 text-emerald-200 border border-emerald-300/30' },
-  CANCELADO:    { texto: 'Cancelado',    clase: 'bg-rose-400/20 text-rose-200 border border-rose-300/30' },
-  RECHAZADO:    { texto: 'Rechazado',    clase: 'bg-rose-400/20 text-rose-200 border border-rose-300/30' },
+  SOLICITADO:   { texto: 'Solicitado',   clase: 'bg-neutro-fondo/20 text-tinta-suave border border-neutro/30' },
+  ASIGNADO:     { texto: 'Asignado',     clase: 'bg-dato-fondo/20 text-dato border border-dato/30' },
+  EN_EJECUCION: { texto: 'En ejecución', clase: 'bg-marca-fondo/20 text-marca border border-marca/30' },
+  TERMINADO:    { texto: 'Terminado',    clase: 'bg-cierre-fondo/20 text-cierre border border-cierre/30' },
+  CERRADO:      { texto: 'Cerrado',      clase: 'bg-exito-fondo/20 text-exito border border-exito/30' },
+  CANCELADO:    { texto: 'Cancelado',    clase: 'bg-riesgo-fondo/20 text-riesgo border border-riesgo/30' },
+  RECHAZADO:    { texto: 'Rechazado',    clase: 'bg-riesgo-fondo/20 text-riesgo border border-riesgo/30' },
 };
 
 /**
@@ -56,13 +58,44 @@ export const ROLES: Record<string, string> = {
 
 /** Categorías de evidencia: qué prueba cada foto. */
 export const CATEGORIAS: Record<string, { texto: string; clase: string }> = {
-  GENERAL:      { texto: 'General',            clase: 'border-slate-300/30 bg-slate-400/15 text-slate-200' },
-  RECEPCION:    { texto: 'Al recibir',         clase: 'border-sky-300/30 bg-sky-400/15 text-sky-200' },
-  ENTREGA:      { texto: 'Al entregar',        clase: 'border-emerald-300/30 bg-emerald-400/15 text-emerald-200' },
-  DANO:         { texto: 'Daño',               clase: 'border-rose-300/30 bg-rose-400/15 text-rose-200' },
-  FIRMA_CEDULA: { texto: 'Cédula con firma',   clase: 'border-amber-300/40 bg-amber-400/20 text-amber-200' },
-  DOCUMENTO:    { texto: 'Documento',          clase: 'border-violet-300/30 bg-violet-400/15 text-violet-200' },
+  GENERAL:      { texto: 'General',            clase: 'border-neutro/30 bg-neutro-fondo/15 text-tinta-suave' },
+  RECEPCION:    { texto: 'Al recibir',         clase: 'border-dato/30 bg-dato-fondo/15 text-dato' },
+  ENTREGA:      { texto: 'Al entregar',        clase: 'border-exito/30 bg-exito-fondo/15 text-exito' },
+  DANO:         { texto: 'Daño',               clase: 'border-riesgo/30 bg-riesgo-fondo/15 text-riesgo' },
+  FIRMA_CEDULA: { texto: 'Cédula con firma',   clase: 'border-marca/40 bg-marca-fondo/20 text-marca' },
+  DOCUMENTO:    { texto: 'Documento',          clase: 'border-cierre/30 bg-cierre-fondo/15 text-cierre' },
 };
+
+/**
+ * Campos de la licencia de transito, con el nombre con el que se le habla al
+ * usuario y la cara del documento donde suelen venir impresos.
+ *
+ * Esta lista es la unica: la usan el formulario del tecnico para dibujar sus
+ * casillas y el lector de la tarjeta para decir que datos saco de la foto. Si
+ * estuvieran duplicadas, un dia una diria «Línea» y la otra «Linea/modelo» y
+ * pareceria que son dos datos distintos.
+ */
+export const CAMPOS_TARJETA: {
+  clave: keyof DatosTarjeta;
+  etiqueta: string;
+  cara: 'frente' | 'reverso';
+}[] = [
+  { clave: 'placa', etiqueta: 'Placa', cara: 'frente' },
+  { clave: 'marca', etiqueta: 'Marca', cara: 'frente' },
+  { clave: 'linea', etiqueta: 'Línea', cara: 'frente' },
+  { clave: 'modelo', etiqueta: 'Modelo', cara: 'frente' },
+  { clave: 'color', etiqueta: 'Color', cara: 'frente' },
+  { clave: 'clase', etiqueta: 'Clase de vehículo', cara: 'frente' },
+  { clave: 'licenciaTransito', etiqueta: 'N.º licencia de tránsito', cara: 'frente' },
+  { clave: 'vin', etiqueta: 'VIN', cara: 'frente' },
+  { clave: 'chasis', etiqueta: 'Chasis', cara: 'frente' },
+  { clave: 'motor', etiqueta: 'Motor', cara: 'frente' },
+  { clave: 'propietarioNombre', etiqueta: 'Propietario según el documento', cara: 'reverso' },
+  { clave: 'propietarioDocumento', etiqueta: 'Documento del propietario', cara: 'reverso' },
+];
+
+export const etiquetaTarjeta = (clave: keyof DatosTarjeta): string =>
+  CAMPOS_TARJETA.find((c) => c.clave === clave)?.etiqueta ?? clave;
 
 export const NOTIFICACIONES: Record<string, string> = {
   SERVICIO_SOLICITADO: '🔔',
