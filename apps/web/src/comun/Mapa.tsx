@@ -8,8 +8,11 @@
  *
  * El marcador por defecto de Leaflet carga sus imagenes desde una ruta
  * relativa que con un empaquetador queda mal, asi que se usan marcadores de
- * HTML (divIcon) con los mismos estilos de la aplicacion. Ademas se ven mejor
- * sobre el fondo oscuro.
+ * HTML (divIcon) con los mismos estilos de la aplicacion. Llevan colores
+ * fijos a proposito: van encima de los mosaicos del mapa, no del fondo de la
+ * pagina, y ahi el ambar y el azul se ven igual de bien en los dos temas.
+ * En tema oscuro los mosaicos se invierten por filtro (estilos.css), pero ese
+ * filtro alcanza solo al panel de mosaicos y no toca estos marcadores.
  */
 import { useEffect, useMemo } from 'react';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
@@ -134,11 +137,14 @@ export function Mapa({
   const centro = puntos[0] ?? MEDELLIN;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/15" style={{ height: alto }}>
+    <div className="overflow-hidden rounded-xl border border-velo/15" style={{ height: alto }}>
       <MapContainer
         center={[centro.lat, centro.lng]}
         zoom={13}
-        style={{ height: '100%', width: '100%', background: '#0b1220' }}
+        // El color de fondo —lo que se ve mientras llegan los mosaicos— lo
+        // pone estilos.css con la variable del tema. Aqui, en linea, ganaria
+        // a la hoja de estilos y se quedaria oscuro tambien en el tema claro.
+        style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={false}
       >
         <TileLayer

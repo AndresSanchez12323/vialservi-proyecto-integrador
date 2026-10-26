@@ -456,6 +456,93 @@ describe('V. Verificacion de quien entrega el vehiculo', () => {
     expect(v.vin).toBe('9GAJC5220RB099999');
     expect(v.licenciaTransito).toBe('55667788');
   });
+
+  it('V8 · por la verificacion NO se puede cambiar la placa del vehiculo', async () => {
+    const { expedienteId, vehiculoId } = await servicioEnEjecucion();
+    const antes = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
+
+    await como(tecnico1)(
+      request(app).patch(`/api/expedientes/${expedienteId}/verificacion`).send({
+        esPropietario: true, version: 1,
+        // La placa va a proposito en la peticion: identifica al vehiculo del
+        // servicio y cambiarla aqui seria cambiar de vehiculo a mitad de un
+        // expediente, asi que el esquema la descarta en silencio.
+        vehiculo: { placa: 'ZZZ999', vin: '9GAJC5220RB011111' },
+      }),
+    );
+
+    const despues = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
+    expect(despues.placa).toBe(antes.placa);
+    expect(despues.vin).toBe('9GAJC5220RB011111');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+/**
+ * Lectura de la licencia de transito (tarjeta de propiedad).
+ *
+ * En las pruebas OCR_MODO es "local", asi que Textract no se llama: lo que se
+ * comprueba aqui es el contrato de las rutas —quien puede pedirlas y que
+ * validan— y que los datos del documento lleguen al vehiculo. El 503 es la
+ * respuesta correcta sin AWS configurado, y sirve de testigo: si el permiso
+ * se rompiera, estas rutas contestarian 403.
+ */
+describe('L. Licencia de transito', () => {
+  it('L1 · el TECNICO puede pedir la lectura de la tarjeta, no solo el cliente y la central', async () => {
+    for (const token of [tecnico1, central, admin]) {
+      const r = await como(token)(request(app).post('/api/vehiculos/leer-tarjeta/preparar'));
+      expect(r.status).not.toBe(403);
+      expect(r.status).toBe(503);
+      expect(r.body.error).toMatch(/OCR/i);
+    }
+  });
+
+  it('L2 · analizar sin imagen responde que falta la foto, no un error del lector', async () => {
+    const r = await como(tecnico1)(
+      request(app).post('/api/vehiculos/leer-tarjeta/analizar').send({ cara: 'reverso' }),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/imagen/i);
+  });
+
+  it('L3 · al registrar el vehiculo se guardan los datos leidos del documento', async () => {
+    const { documento, token } = await registrarCliente();
+    const placa = placaNueva();
+
+    const r = await como(token)(
+      request(app).post('/api/vehiculos').send({
+        placa, marca: 'Renault', modelo: 'Logan', color: 'Gris',
+        // Lo que sale de la foto de la tarjeta. No se le PIDE al cliente en el
+        // formulario, pero si lo fotografio no se tira para que el tecnico lo
+        // vuelva a teclear en el sitio.
+        linea: 'Logan Life', clase: 'Automóvil', licenciaTransito: '11223344',
+        vin: '9FBJC5220RB077777', propietarioNombre: 'Cliente Registrado',
+        propietarioDocumento: documento,
+      }),
+    );
+    expect(r.status).toBe(201);
+
+    const v = await prisma.vehiculo.findUniqueOrThrow({ where: { placa } });
+    expect(v.licenciaTransito).toBe('11223344');
+    expect(v.vin).toBe('9FBJC5220RB077777');
+    expect(v.linea).toBe('Logan Life');
+    expect(v.propietarioDocumento).toBe(documento);
+  });
+
+  it('L4 · los datos del documento son opcionales: el registro de siempre sigue funcionando', async () => {
+    const { token } = await registrarCliente();
+    const placa = placaNueva();
+    const r = await como(token)(
+      request(app).post('/api/vehiculos').send({
+        placa, marca: 'Mazda', modelo: 'Mazda 3', color: 'Rojo',
+      }),
+    );
+    expect(r.status).toBe(201);
+
+    const v = await prisma.vehiculo.findUniqueOrThrow({ where: { placa } });
+    expect(v.vin).toBeNull();
+    expect(v.licenciaTransito).toBeNull();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

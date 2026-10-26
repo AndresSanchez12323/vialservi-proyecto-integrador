@@ -9,6 +9,7 @@ import { direccionDesdePunto, Mapa, ubicacionActual, type Punto } from '../comun
 import {
   ESTADOS, ESTADOS_CLIENTE, PASOS, PASOS_CORTOS, TIPOS, fecha, haceCuanto, pasoDe,
 } from '../comun/formato';
+import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 /** Especialidad que exige cada tipo de servicio. */
 const especialidadDe = (tipo: string) =>
@@ -52,10 +53,10 @@ function SelectorUbicacion({
         </button>
         {punto && (
           <>
-            <span className="font-mono text-xs text-emerald-300">
+            <span className="font-mono text-xs text-exito">
               {punto.lat.toFixed(5)}, {punto.lng.toFixed(5)}
             </span>
-            <button type="button" className="text-xs text-slate-400 underline" onClick={() => alCambiar(null)}>
+            <button type="button" className="text-xs text-tinta-tenue underline" onClick={() => alCambiar(null)}>
               quitar
             </button>
           </>
@@ -63,13 +64,13 @@ function SelectorUbicacion({
       </div>
 
       {motivo && (
-        <p className="text-xs text-amber-200">
+        <p className="text-xs text-marca">
           {motivo} También puede enviar la solicitud solo con la dirección.
         </p>
       )}
 
       <Mapa destino={punto} alElegir={alCambiar} alto="12rem" etiquetaDestino="Aquí está el vehículo" />
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-tinta-sutil">
         Pulse el mapa para marcar el punto exacto. Sirve para enviarle el técnico más cercano.
       </p>
     </div>
@@ -96,7 +97,14 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
 
   const mutar = useMutation({
     mutationFn: () => enviar(`/servicios/${servicio.id}/clasificar`, 'PATCH', { tipo, tecnicoId }),
-    onSuccess: alTerminar,
+    onSuccess: () => {
+      avisoExito('Se abrio el expediente y el tecnico ya tiene el servicio asignado.', 'Servicio asignado');
+      alTerminar();
+    },
+    // Aqui cae el aviso de que el tecnico ya tiene trabajo activo: es la
+    // razon mas comun por la que una asignacion no sale, y conviene que
+    // interrumpa en vez de quedar como una linea de texto bajo el boton.
+    onError: (e) => avisoError(e, 'No se pudo asignar'),
   });
 
   const requerida = especialidadDe(tipo);
@@ -113,7 +121,7 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
     <div className="vidrio-suave mt-4 space-y-4 p-4">
       <div>
         <p className="text-sm font-medium">Clasificar y asignar</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-tinta-tenue">
           Confirme el tipo de servicio y elija el técnico. Al asignar nace el expediente.
         </p>
       </div>
@@ -126,8 +134,8 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
             onClick={() => { setTipo(k); setTecnicoId(null); }}
             className={`rounded-lg px-3 py-1.5 text-sm transition ${
               tipo === k
-                ? 'bg-amber-400/20 font-medium text-amber-200 ring-1 ring-amber-300/40'
-                : 'bg-white/10 text-slate-200 hover:bg-white/20'
+                ? 'bg-marca-fondo/20 font-medium text-marca ring-1 ring-marca/40'
+                : 'bg-velo/10 text-tinta-suave hover:bg-velo/20'
             }`}
           >
             {v}
@@ -146,13 +154,13 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
       )}
 
       <div>
-        <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">
+        <p className="mb-2 text-xs uppercase tracking-wide text-tinta-tenue">
           Técnicos con especialidad {requerida.toLowerCase()}
-          {isLoading && <span className="ml-2 text-slate-500">cargando…</span>}
+          {isLoading && <span className="ml-2 text-tinta-sutil">cargando…</span>}
         </p>
 
         {aptos.length === 0 && !isLoading && (
-          <p className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <p className="rounded-lg border border-marca/30 bg-marca-fondo/10 px-3 py-2 text-xs text-marca">
             Ningún técnico tiene la especialidad {requerida.toLowerCase()}. Revise el tipo de
             servicio o la hoja de vida de los técnicos.
           </p>
@@ -169,39 +177,39 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
                   onClick={() => setTecnicoId(t.id)}
                   className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                     tecnicoId === t.id
-                      ? 'border-amber-300/60 bg-amber-400/15'
+                      ? 'border-marca/60 bg-marca-fondo/15'
                       : t.apto
-                        ? 'border-white/10 bg-white/[0.06] hover:bg-white/12'
-                        : 'border-white/5 bg-white/[0.02] opacity-50'
+                        ? 'border-velo/10 bg-velo/[0.06] hover:bg-velo/12'
+                        : 'border-velo/5 bg-velo/[0.02] opacity-50'
                   } ${t.apto ? '' : 'cursor-not-allowed'}`}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">
                         {t.nombre}
-                        {!t.apto && <span className="ml-2 text-xs text-slate-400">sin la especialidad</span>}
+                        {!t.apto && <span className="ml-2 text-xs text-tinta-tenue">sin la especialidad</span>}
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-tinta-tenue">
                         {t.especialidades.toLowerCase().split(',').join(' · ')}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       {t.distanciaKm !== null ? (
-                        <span className="etiqueta border border-sky-300/30 bg-sky-400/15 text-sky-200">
+                        <span className="etiqueta border border-dato/30 bg-dato-fondo/15 text-dato">
                           {t.distanciaKm} km · {t.minutosEstimados} min
                         </span>
                       ) : (
-                        <span className="text-slate-500" title="El técnico no ha reportado su ubicación">
+                        <span className="text-tinta-sutil" title="El técnico no ha reportado su ubicación">
                           sin ubicación
                         </span>
                       )}
                       <span
                         className={`etiqueta ${
                           libre
-                            ? 'border border-emerald-300/30 bg-emerald-400/20 text-emerald-200'
+                            ? 'border border-exito/30 bg-exito-fondo/20 text-exito'
                             : t.disponible
-                              ? 'border border-amber-300/30 bg-amber-400/15 text-amber-200'
-                              : 'border border-slate-300/20 bg-slate-400/10 text-slate-400'
+                              ? 'border border-marca/30 bg-marca-fondo/15 text-marca'
+                              : 'border border-neutro/20 bg-neutro-fondo/10 text-tinta-tenue'
                         }`}
                       >
                         {libre ? 'Libre' : t.disponible ? `${t.activos} en curso` : 'No disponible'}
@@ -215,7 +223,6 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
         </ul>
       </div>
 
-      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
 
       <button className="boton" disabled={!tecnicoId || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Asignando…' : 'Asignar y abrir expediente'}
@@ -236,17 +243,36 @@ function ConMotivo({
   alTerminar: () => void;
 }) {
   const [motivo, setMotivo] = useState('');
+  const esRechazo = accion === 'rechazar';
+
   const mutar = useMutation({
     mutationFn: () => enviar(`/servicios/${servicio.id}/${accion}`, 'PATCH', { motivo }),
-    onSuccess: alTerminar,
+    onSuccess: () => {
+      avisoExito(
+        esRechazo ? 'La solicitud quedo registrada como no aceptada, con su motivo.'
+                  : 'El servicio quedo cancelado, con su motivo.',
+        esRechazo ? 'Solicitud rechazada' : 'Servicio cancelado',
+      );
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, esRechazo ? 'No se pudo rechazar' : 'No se pudo cancelar'),
   });
 
-  const esRechazo = accion === 'rechazar';
+  // Ni el rechazo ni la cancelacion se deshacen: se confirman antes.
+  const pedirConfirmacion = async () => {
+    const seguro = await confirmar({
+      titulo: esRechazo ? '¿No aceptar esta solicitud?' : '¿Cancelar este servicio?',
+      texto: `Quedara registrado con el motivo: "${motivo}". Esta accion no se puede deshacer.`,
+      confirmar: esRechazo ? 'Si, rechazar' : 'Si, cancelar el servicio',
+      cancelar: 'Volver',
+    });
+    if (seguro) mutar.mutate();
+  };
 
   return (
     <div className="vidrio-suave mt-3 space-y-2 p-4">
       <p className="text-sm font-medium">{esRechazo ? 'No aceptar la solicitud' : 'Cancelar servicio'}</p>
-      <p className="text-xs text-slate-400">
+      <p className="text-xs text-tinta-tenue">
         {esRechazo
           ? 'La solicitud queda registrada como no aceptada, con su motivo: el historial de lo que no se atendió también es trazabilidad.'
           : 'La cancelación exige un motivo: así queda la trazabilidad.'}
@@ -257,8 +283,7 @@ function ConMotivo({
         className="campo"
         placeholder={esRechazo ? 'Motivo del rechazo' : 'Motivo de la cancelación'}
       />
-      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
-      <button className="boton-suave" disabled={motivo.length < 5 || mutar.isPending} onClick={() => mutar.mutate()}>
+      <button className="boton-suave" disabled={motivo.length < 5 || mutar.isPending} onClick={pedirConfirmacion}>
         {esRechazo ? 'Confirmar rechazo' : 'Confirmar cancelación'}
       </button>
     </div>
@@ -279,17 +304,17 @@ function Avance({ estado }: { estado: string }) {
         <li key={p} className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div
             className={`h-1.5 w-full rounded-full ${
-              i <= actual ? 'bg-gradient-to-r from-amber-400 to-amber-200' : 'bg-white/10'
+              i <= actual ? 'bg-gradient-to-r from-marca-fondo to-marca' : 'bg-velo/10'
             }`}
             title={ESTADOS_CLIENTE[p]}
           />
           <span
             className={`truncate text-[11px] leading-tight ${
               i === actual
-                ? 'font-medium text-amber-200'
+                ? 'font-medium text-marca'
                 : i < actual
-                  ? 'text-slate-400'
-                  : 'text-slate-600'
+                  ? 'text-tinta-tenue'
+                  : 'text-tinta-sutil'
             }`}
           >
             {PASOS_CORTOS[p]}
@@ -311,19 +336,19 @@ function SeguimientoCliente({ servicio }: { servicio: Servicio }) {
   const s = servicio.seguimiento;
 
   return (
-    <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+    <div className="mt-4 space-y-3 border-t border-velo/10 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-400">Su técnico</p>
+          <p className="text-xs uppercase tracking-wide text-tinta-tenue">Su técnico</p>
           <p className="text-sm font-medium">{t?.nombre ?? 'Por asignar'}</p>
-          {t?.telefono && <p className="text-xs text-slate-400">{t.telefono}</p>}
+          {t?.telefono && <p className="text-xs text-tinta-tenue">{t.telefono}</p>}
         </div>
 
         {s.minutosEstimados !== null && (
           <div className="text-right">
-            <p className="text-xs uppercase tracking-wide text-slate-400">Llega en</p>
-            <p className="text-2xl font-semibold text-amber-300">~{s.minutosEstimados} min</p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-xs uppercase tracking-wide text-tinta-tenue">Llega en</p>
+            <p className="text-2xl font-semibold text-marca">~{s.minutosEstimados} min</p>
+            <p className="text-[11px] text-tinta-tenue">
               {s.origenDelTiempo === 'tecnico'
                 ? `informado por el técnico ${haceCuanto(s.informadoEn)}`
                 : 'estimado por la distancia'}
@@ -343,7 +368,7 @@ function SeguimientoCliente({ servicio }: { servicio: Servicio }) {
             alto="15rem"
           />
           {puntoTecnico && (
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-tinta-sutil">
               Posición del técnico actualizada {haceCuanto(t?.ubicacionEn)}. La línea punteada es
               la distancia directa, no la ruta por calles.
             </p>
@@ -358,7 +383,6 @@ function SeguimientoCliente({ servicio }: { servicio: Servicio }) {
 /** Acciones del tecnico en campo: ubicacion, tiempo de llegada y avance. */
 function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTerminar: () => void }) {
   const [minutos, setMinutos] = useState(String(servicio.etaMinutos ?? ''));
-  const [aviso, setAviso] = useState('');
 
   const informar = useMutation({
     mutationFn: async () => {
@@ -371,12 +395,26 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
         ...(p ?? {}),
       });
     },
-    onSuccess: () => { setAviso('Tiempo informado al cliente.'); alTerminar(); },
+    onSuccess: () => {
+      avisoExito('El cliente ya ve su tiempo de llegada y su posicion.', 'Tiempo informado');
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo informar el tiempo'),
   });
 
   const avanzar = useMutation({
     mutationFn: (estado: string) => enviar(`/servicios/${servicio.id}/estado`, 'PATCH', { estado }),
-    onSuccess: alTerminar,
+    onSuccess: (_d, estado) => {
+      avisoExito(
+        estado === 'TERMINADO'
+          ? 'La central recibio el aviso y revisara el expediente para cerrarlo.'
+          : 'Quedo registrado que ya esta atendiendo el servicio.',
+        estado === 'TERMINADO' ? 'Servicio terminado' : 'Atencion iniciada',
+      );
+      alTerminar();
+    },
+    // Si faltan evidencias del formato, el servidor lo rechaza aqui.
+    onError: (e) => avisoError(e, 'No se pudo avanzar el servicio'),
   });
 
   // Lo que falta para cerrar, sin contar la marca de terminado: si faltan
@@ -396,11 +434,11 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
   const puedeInformar = servicio.estado === 'ASIGNADO';
 
   return (
-    <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+    <div className="mt-4 space-y-3 border-t border-velo/10 pt-4">
       {puedeInformar && (
         <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="mb-1 block text-xs text-slate-400">¿En cuántos minutos llega?</label>
+            <label className="mb-1 block text-xs text-tinta-tenue">¿En cuántos minutos llega?</label>
             <input
               value={minutos}
               onChange={(e) => setMinutos(e.target.value.replace(/\D/g, '').slice(0, 3))}
@@ -420,16 +458,8 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
         </div>
       )}
 
-      {aviso && <p className="text-xs text-emerald-300">{aviso}</p>}
-      {informar.error && <p className="text-xs text-rose-300">{(informar.error as Error).message}</p>}
-      {avanzar.error && (
-        <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-          {(avanzar.error as Error).message}
-        </p>
-      )}
-
       {servicio.estado === 'EN_EJECUCION' && faltanFotos.length > 0 && (
-        <div className="rounded-lg border border-amber-300/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+        <div className="rounded-lg border border-marca/30 bg-marca-fondo/10 px-3 py-2 text-sm text-marca">
           <p className="font-medium">Antes de terminar faltan evidencias:</p>
           <ul className="mt-1 list-disc pl-5">
             {faltanFotos.map((f) => (
@@ -438,13 +468,13 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
           </ul>
           <div className="mt-2 flex flex-wrap gap-3">
             {servicio.expediente && (
-              <Link to={`/expedientes/${servicio.expediente.id}`} className="underline hover:text-amber-200">
+              <Link to={`/expedientes/${servicio.expediente.id}`} className="underline hover:text-marca">
                 Diligenciar expediente
               </Link>
             )}
             <button
               type="button"
-              className="underline hover:text-amber-200"
+              className="underline hover:text-marca"
               onClick={() => control.refetch()}
             >
               Revisar de nuevo
@@ -483,7 +513,7 @@ function AccionesTecnico({ servicio, alTerminar }: { servicio: Servicio; alTermi
       </div>
 
       {servicio.estado === 'EN_EJECUCION' && (
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-tinta-sutil">
           Para terminar hace falta registrar si quien entrega es el propietario y subir las
           evidencias del formato. El cierre lo hace la central.
         </p>
@@ -545,6 +575,7 @@ function Solicitar({
         ...(punto ?? {}),
       }),
     onSuccess: alTerminar,
+    onError: (e) => avisoError(e, 'No se pudo enviar la solicitud'),
   });
 
   const completo =
@@ -555,7 +586,7 @@ function Solicitar({
     <div className="vidrio space-y-3 p-5">
       <div>
         <p className="font-medium">Solicitar un servicio</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-tinta-tenue">
           Solo se pide lo que usted sabe ahora. Los datos de la tarjeta de propiedad los toma
           el técnico en el sitio: no hace falta buscarlos.
         </p>
@@ -568,9 +599,9 @@ function Solicitar({
             onChange={(e) => { setClienteId(e.target.value); setForm({ ...form, vehiculoId: '' }); }}
             className="campo sm:col-span-2"
           >
-            <option value="" className="bg-slate-800">Cliente…</option>
+            <option value="" className="bg-superficie">Cliente…</option>
             {(clientes ?? []).map((c) => (
-              <option key={c.id} value={c.id} className="bg-slate-800">
+              <option key={c.id} value={c.id} className="bg-superficie">
                 {c.nombre} · {c.documento}
               </option>
             ))}
@@ -582,9 +613,9 @@ function Solicitar({
           onChange={(e) => setForm({ ...form, vehiculoId: e.target.value })}
           className="campo"
         >
-          <option value="" className="bg-slate-800">Vehículo…</option>
+          <option value="" className="bg-superficie">Vehículo…</option>
           {suyos.map((v) => (
-            <option key={v.id} value={v.id} className="bg-slate-800">
+            <option key={v.id} value={v.id} className="bg-superficie">
               {v.placa} · {v.marca} {v.modelo}
             </option>
           ))}
@@ -597,18 +628,18 @@ function Solicitar({
           title="Qué cree que necesita; la central lo confirma"
         >
           {Object.entries(TIPOS).map(([k, v]) => (
-            <option key={k} value={k} className="bg-slate-800">{v}</option>
+            <option key={k} value={k} className="bg-superficie">{v}</option>
           ))}
         </select>
       </div>
 
       {esCentral && !clienteId && (
-        <p className="text-xs text-slate-400">Elija primero el cliente para ver sus vehículos.</p>
+        <p className="text-xs text-tinta-tenue">Elija primero el cliente para ver sus vehículos.</p>
       )}
       {!esCentral && vehiculos?.length === 0 && (
-        <p className="text-xs text-amber-200">
+        <p className="text-xs text-marca">
           Todavía no tiene vehículos registrados.{' '}
-          <Link to="/vehiculos" className="underline hover:text-amber-100">Registre uno primero</Link>:
+          <Link to="/vehiculos" className="underline hover:text-marca">Registre uno primero</Link>:
           sin vehículo no hay servicio.
         </p>
       )}
@@ -638,7 +669,6 @@ function Solicitar({
         alObtenerUbicacion={completarDireccion}
       />
 
-      {mutar.error && <p className="text-sm text-rose-300">{(mutar.error as Error).message}</p>}
 
       <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Enviando…' : 'Enviar solicitud a la central'}
@@ -660,7 +690,6 @@ export function Servicios() {
   const [conMotivo, setConMotivo] = useState<{ id: number; accion: 'cancelar' | 'rechazar' } | null>(null);
   const vehiculoIdInicial = esCliente ? parametros.get('vehiculoId') ?? undefined : undefined;
   const [solicitando, setSolicitando] = useState(Boolean(vehiculoIdInicial));
-  const [ok, setOk] = useState('');
   // Punto que el tecnico marca en el mapa cuando el equipo no puede ubicarse.
   const [manual, setManual] = useState<Punto | null>(null);
   const [pestana, setPestana] = useState<'pendientes' | 'progreso' | 'historial'>('pendientes');
@@ -682,10 +711,17 @@ export function Servicios() {
   const cambiarDisponibilidad = useMutation({
     mutationFn: (disponible: boolean) =>
       enviar<Tecnico>('/tecnicos/yo/disponibilidad', 'PATCH', { disponible }),
-    onSuccess: () => {
+    onSuccess: (_d, disponible) => {
+      avisoExito(
+        disponible
+          ? 'La central ya lo ve libre para asignarle un servicio.'
+          : 'La central ya lo ve ocupado y no le asignara servicios.',
+        disponible ? 'Disponible' : 'Ocupado',
+      );
       cola.invalidateQueries({ queryKey: ['tecnicoYo'] });
       cola.invalidateQueries({ queryKey: ['tecnicos'] });
     },
+    onError: (e) => avisoError(e, 'No se pudo cambiar la disponibilidad'),
   });
 
   const reportarUbicacion = useMutation({
@@ -702,10 +738,11 @@ export function Servicios() {
       return enviar('/tecnicos/yo/ubicacion', 'PATCH', punto);
     },
     onSuccess: () => {
-      setOk('Ubicación actualizada. La central y el cliente ya la ven.');
+      avisoExito('La central y el cliente ya ven su posicion.', 'Ubicacion actualizada');
       cola.invalidateQueries({ queryKey: ['tecnicoYo'] });
       cola.invalidateQueries({ queryKey: ['servicios'] });
     },
+    onError: (e) => avisoError(e, 'No se pudo reportar la ubicacion'),
   });
 
   const refrescar = () => {
@@ -729,7 +766,7 @@ export function Servicios() {
         <h2 className="text-xl font-semibold">
           {esCliente ? 'Mis servicios' : 'Gestionar servicio'}
         </h2>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-tinta-tenue">
           {esTecnico
             ? 'Sus asignados, su historial y su disponibilidad para la central.'
             : esCliente
@@ -741,16 +778,16 @@ export function Servicios() {
       {esTecnico && (
         <section className="vidrio flex flex-wrap items-center justify-between gap-3 p-5">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">Mi disponibilidad</p>
+            <p className="text-xs uppercase tracking-wide text-tinta-tenue">Mi disponibilidad</p>
             <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
               {ficha ? (
-                <span className={`etiqueta ${ficha.disponible ? 'border border-emerald-300/40 bg-emerald-400/15 text-emerald-200' : 'border border-amber-300/40 bg-amber-400/15 text-amber-200'}`}>
+                <span className={`etiqueta ${ficha.disponible ? 'border border-exito/40 bg-exito-fondo/15 text-exito' : 'border border-marca/40 bg-marca-fondo/15 text-marca'}`}>
                   {ficha.disponible ? 'Disponible para asignar' : 'Ocupado en servicio'}
                 </span>
               ) : (
-                <span className="text-slate-500">Cargando…</span>
+                <span className="text-tinta-sutil">Cargando…</span>
               )}
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-tinta-tenue">
                 Ubicación: {ficha?.ubicacionEn ? haceCuanto(ficha.ubicacionEn) : 'sin reportar'}
               </span>
             </p>
@@ -759,7 +796,7 @@ export function Servicios() {
             <button
               className="boton-suave"
               disabled={reportarUbicacion.isPending}
-              onClick={() => { setOk(''); reportarUbicacion.mutate(undefined); }}
+              onClick={() => reportarUbicacion.mutate(undefined)}
               title="La central la usa para enviarle el servicio más cercano"
             >
               {reportarUbicacion.isPending ? 'Ubicando…' : '📍 Reportar mi ubicación'}
@@ -775,14 +812,14 @@ export function Servicios() {
         </section>
       )}
 
+      {/* No es un mensaje de error: es la salida cuando el equipo no logra
+          ubicarse. El fallo se avisa en emergente; esto se queda en la pagina
+          porque el tecnico tiene que poder marcar el punto en el mapa. */}
       {reportarUbicacion.error && (
         <section className="vidrio space-y-3 p-5">
-          <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-            {(reportarUbicacion.error as Error).message}
-          </p>
           <div>
-            <p className="text-sm font-medium">Marcarla a mano</p>
-            <p className="mb-2 text-xs text-slate-400">
+            <p className="text-sm font-medium">No pudimos ubicarlo: marquelo a mano</p>
+            <p className="mb-2 text-xs text-tinta-tenue">
               Pulse el mapa donde está. Una posición aproximada sirve: se usa para calcular
               a qué distancia queda de cada servicio.
             </p>
@@ -792,12 +829,12 @@ export function Servicios() {
             <button
               className="boton"
               disabled={!manual || reportarUbicacion.isPending}
-              onClick={() => { setOk(''); if (manual) reportarUbicacion.mutate(manual); }}
+              onClick={() => { if (manual) reportarUbicacion.mutate(manual); }}
             >
               Reportar este punto
             </button>
             {manual && (
-              <span className="font-mono text-xs text-emerald-300">
+              <span className="font-mono text-xs text-exito">
                 {manual.lat.toFixed(5)}, {manual.lng.toFixed(5)}
               </span>
             )}
@@ -824,8 +861,8 @@ export function Servicios() {
                 onClick={() => setPestana(clave)}
                 className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
                   pestana === clave
-                    ? 'bg-amber-400/20 font-medium text-amber-200'
-                    : 'text-slate-300 hover:bg-white/10'
+                    ? 'bg-marca-fondo/20 font-medium text-marca'
+                    : 'text-tinta-suave hover:bg-velo/10'
                 }`}
               >
                 {texto} <span className="font-mono text-xs opacity-80">({n})</span>
@@ -837,7 +874,7 @@ export function Servicios() {
 
       {(esCliente || esCentral) && (
         <div className="space-y-3">
-          <button className="boton" onClick={() => { setSolicitando(!solicitando); setOk(''); }}>
+          <button className="boton" onClick={() => setSolicitando(!solicitando)}>
             {solicitando
               ? 'Cerrar formulario'
               : esCentral ? 'Solicitar servicio (llamada del cliente)' : '+ Solicitar nuevo servicio'}
@@ -847,7 +884,7 @@ export function Servicios() {
               vehiculoIdInicial={vehiculoIdInicial}
               alTerminar={() => {
                 setSolicitando(false);
-                setOk('Solicitud enviada. La central la está verificando y le asignará un técnico.');
+                avisoExito('La central la esta verificando y le asignara un tecnico.', 'Solicitud enviada');
                 refrescar();
               }}
             />
@@ -855,14 +892,9 @@ export function Servicios() {
         </div>
       )}
 
-      {ok && (
-        <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-          {ok}
-        </p>
-      )}
 
-      {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
-      {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
+      {isLoading && <p className="text-sm text-tinta-tenue">Cargando…</p>}
+      {error && <p className="text-sm text-riesgo">{(error as Error).message}</p>}
 
       <div className="space-y-4">
         {lista.map((s) => (
@@ -874,13 +906,13 @@ export function Servicios() {
                     {esCliente ? ESTADOS_CLIENTE[s.estado] ?? s.estado : ESTADOS[s.estado]?.texto ?? s.estado}
                   </span>
                   {s.tipo && (
-                    <span className="etiqueta border border-white/20 bg-white/10 text-slate-200">
+                    <span className="etiqueta border border-velo/20 bg-velo/10 text-tinta-suave">
                       {TIPOS[s.tipo]}
                     </span>
                   )}
                   {!s.tipo && s.tipoSolicitado && (
                     <span
-                      className="etiqueta border border-dashed border-sky-300/40 bg-sky-400/10 text-sky-200"
+                      className="etiqueta border border-dashed border-dato/40 bg-dato-fondo/10 text-dato"
                       title="Lo que el cliente cree necesitar; la central confirma al clasificar"
                     >
                       Solicitado: {TIPOS[s.tipoSolicitado] ?? s.tipoSolicitado}
@@ -888,7 +920,7 @@ export function Servicios() {
                   )}
                   {s.expediente?.esPropietario === false && (
                     <span
-                      className="etiqueta border border-amber-300/40 bg-amber-400/20 text-amber-200"
+                      className="etiqueta border border-marca/40 bg-marca-fondo/20 text-marca"
                       title="Quien entregó el vehículo no es el propietario"
                     >
                       ⚠️ No propietario
@@ -897,40 +929,40 @@ export function Servicios() {
                   {s.expediente && (
                     <Link
                       to={`/expedientes/${s.expediente.id}`}
-                      className="etiqueta border border-amber-300/40 bg-amber-400/15 font-mono text-amber-200 hover:bg-amber-400/25"
+                      className="etiqueta border border-marca/40 bg-marca-fondo/15 font-mono text-marca hover:bg-marca-fondo/25"
                     >
                       {s.expediente.consecutivo}
                     </Link>
                   )}
                 </div>
                 <h3 className="mt-2 font-medium">{s.descripcion}</h3>
-                <p className="text-sm text-slate-400">{s.direccion}</p>
+                <p className="text-sm text-tinta-tenue">{s.direccion}</p>
               </div>
 
-              <div className="text-right text-sm">
-                <p className="font-mono text-amber-300">{s.vehiculo.placa}</p>
-                <p className="text-slate-300">{s.vehiculo.marca} {s.vehiculo.modelo}</p>
-                <p className="text-xs text-slate-500">{fecha(s.solicitadoEn)}</p>
+              <div className="min-w-0 text-sm sm:text-right">
+                <p className="font-mono text-marca">{s.vehiculo.placa}</p>
+                <p className="text-tinta-suave">{s.vehiculo.marca} {s.vehiculo.modelo}</p>
+                <p className="text-xs text-tinta-sutil">{fecha(s.solicitadoEn)}</p>
               </div>
             </div>
 
             {esCliente && <div className="mt-4"><Avance estado={s.estado} /></div>}
 
             {!esCliente && (
-              <div className="mt-4 grid grid-cols-1 gap-2 border-t border-white/10 pt-3 text-sm sm:grid-cols-3">
-                <p><span className="text-slate-400">Cliente:</span> {s.cliente.nombre}</p>
-                <p><span className="text-slate-400">Contacto:</span> {s.contactoTelefono ?? s.cliente.telefono}</p>
-                <p><span className="text-slate-400">Técnico:</span> {s.tecnico?.nombre ?? 'sin asignar'}</p>
+              <div className="mt-4 grid grid-cols-1 gap-2 border-t border-velo/10 pt-3 text-sm sm:grid-cols-3">
+                <p><span className="text-tinta-tenue">Cliente:</span> {s.cliente.nombre}</p>
+                <p><span className="text-tinta-tenue">Contacto:</span> {s.contactoTelefono ?? s.cliente.telefono}</p>
+                <p><span className="text-tinta-tenue">Técnico:</span> {s.tecnico?.nombre ?? 'sin asignar'}</p>
               </div>
             )}
 
             {s.motivoCancelacion && (
-              <p className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+              <p className="mt-3 rounded-lg border border-riesgo/30 bg-riesgo-fondo/10 px-3 py-2 text-sm text-riesgo">
                 Cancelado: {s.motivoCancelacion}
               </p>
             )}
             {s.motivoRechazo && (
-              <p className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+              <p className="mt-3 rounded-lg border border-riesgo/30 bg-riesgo-fondo/10 px-3 py-2 text-sm text-riesgo">
                 No aceptado: {s.motivoRechazo}
               </p>
             )}
@@ -981,7 +1013,7 @@ export function Servicios() {
         ))}
 
         {lista.length === 0 && !isLoading && (
-          <p className="vidrio p-6 text-sm text-slate-400">
+          <p className="vidrio p-6 text-sm text-tinta-tenue">
             {esTecnico
               ? pestana === 'historial'
                 ? 'Aún no tiene servicios realizados.'

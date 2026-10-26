@@ -7,13 +7,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { publico, sesion, type Sesion } from '../comun/api';
+import { BotonTema } from '../comun/BotonTema';
+import { avisoError } from '../comun/avisos';
 
 export function Registro() {
   const navegar = useNavigate();
   const [form, setForm] = useState({
     documento: '', nombre: '', correo: '', telefono: '', clave: '', confirmar: '',
   });
-  const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
   const cambiar = (campo: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -36,7 +37,6 @@ export function Registro() {
 
   const registrar = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setCargando(true);
     try {
       const r = await publico<{ token: string; usuario: Sesion; enlazadoAFichaExistente: boolean }>(
@@ -54,24 +54,27 @@ export function Registro() {
       sesion.guardar(r.token, r.usuario);
       navegar('/vehiculos');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No fue posible crear la cuenta');
+      avisoError(err, 'No fue posible crear la cuenta');
     } finally {
       setCargando(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="relative flex min-h-screen items-center justify-center p-4">
+      {/* Fuera de la tarjeta y fijo: estas pantallas no tienen cabecera donde
+          ponerlo, y aqui no se mueve con el formulario. */}
+      <div className="fixed right-4 top-4 z-20"><BotonTema /></div>
       <div className="vidrio w-full max-w-lg p-8">
         <h1 className="text-2xl font-semibold tracking-tight">Crear cuenta</h1>
-        <p className="mb-6 text-sm text-slate-300">
+        <p className="mb-6 text-sm text-tinta-suave">
           Regístrese como cliente para registrar sus vehículos y solicitar servicios.
         </p>
 
         <form onSubmit={registrar} className="space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-300">Documento</label>
+              <label className="mb-1 block text-sm text-tinta-suave">Documento</label>
               <input
                 value={form.documento}
                 onChange={cambiar('documento')}
@@ -82,7 +85,7 @@ export function Registro() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-300">Teléfono</label>
+              <label className="mb-1 block text-sm text-tinta-suave">Teléfono</label>
               <input
                 value={form.telefono}
                 onChange={cambiar('telefono')}
@@ -94,12 +97,12 @@ export function Registro() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-slate-300">Nombre completo</label>
+            <label className="mb-1 block text-sm text-tinta-suave">Nombre completo</label>
             <input value={form.nombre} onChange={cambiar('nombre')} className="campo" placeholder="Santiago Gómez" />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm text-slate-300">Correo</label>
+            <label className="mb-1 block text-sm text-tinta-suave">Correo</label>
             <input
               type="email"
               value={form.correo}
@@ -107,31 +110,26 @@ export function Registro() {
               className="campo"
               placeholder="santiago@correo.com"
             />
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-tinta-tenue">
               A este correo llega el código si olvida la contraseña.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-slate-300">Contraseña</label>
+              <label className="mb-1 block text-sm text-tinta-suave">Contraseña</label>
               <input type="password" value={form.clave} onChange={cambiar('clave')} className="campo" />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-slate-300">Repetir contraseña</label>
+              <label className="mb-1 block text-sm text-tinta-suave">Repetir contraseña</label>
               <input type="password" value={form.confirmar} onChange={cambiar('confirmar')} className="campo" />
             </div>
           </div>
 
           {problemas.length > 0 && (
-            <ul className="space-y-1 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <ul className="space-y-1 rounded-lg border border-marca/30 bg-marca-fondo/10 px-3 py-2 text-xs text-marca">
               {problemas.map((p) => <li key={p}>• {p}</li>)}
             </ul>
-          )}
-          {error && (
-            <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {error}
-            </p>
           )}
 
           <button className="boton w-full" disabled={!completo || cargando}>
@@ -139,9 +137,9 @@ export function Registro() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
+        <p className="mt-6 text-center text-sm text-tinta-tenue">
           ¿Ya tiene cuenta?{' '}
-          <Link to="/login" className="text-amber-300 underline hover:text-amber-200">
+          <Link to="/login" className="text-marca underline hover:text-marca">
             Iniciar sesión
           </Link>
         </p>
