@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { enviar, juntarTarjeta, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
+import { enviar, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
 import { CAMPOS_TARJETA, MAX_VEHICULOS_CLIENTE } from '../comun/formato';
 import { CapturaTarjeta } from '../comun/CapturaTarjeta';
 import { avisoError, avisoExito, confirmar } from '../comun/avisos';
@@ -18,6 +18,21 @@ const DEL_DOCUMENTO = CAMPOS_TARJETA.filter(
   (c) => !['placa', 'marca', 'modelo', 'color'].includes(c.clave),
 );
 
+/**
+ * Se queda SOLO con los campos del documento, tirando placa, marca, modelo y
+ * color.
+ *
+ * Esos cuatro tienen su propia casilla arriba y es ahi donde la persona los
+ * corrige. Si se guardaran tambien desde aqui, lo leido por el lector viajaria
+ * en la peticion detras de lo que hay en pantalla y le ganaria: una placa
+ * corregida a mano volveria a la mal leida, y en «Línea o modelo» se guardaria
+ * el año del documento en vez de la linea que se ve en el formulario.
+ */
+const soloDelDocumento = (datos: DatosTarjeta): DatosTarjeta =>
+  Object.fromEntries(
+    DEL_DOCUMENTO.map(({ clave }) => [clave, datos[clave]]).filter(([, valor]) => valor !== undefined),
+  );
+
 const basicosCompletos = (b: Basicos) =>
   b.placa.trim().length >= 5 && b.marca.trim().length >= 2 &&
   b.modelo.trim().length >= 2 && b.color.trim().length >= 3;
@@ -30,15 +45,17 @@ const basicosCompletos = (b: Basicos) =>
  * modelo es el año. En la casilla que el usuario ve se pone lo que una persona
  * escribiria ahi —la linea— y el año queda aparte, con el resto del documento.
  *
- * Solo rellena las casillas VACIAS. La lectura del reverso vuelve a llamar con
- * todo lo acumulado, y si pisara lo que hay escrito desharia la correccion que
- * la persona acabara de hacer a mano entre una foto y la otra.
+ * Lo que trae la foto MANDA sobre lo que hay escrito, y es a proposito: volver
+ * a tomar una foto —o empezar la lectura de cero— es justo lo que hace alguien
+ * cuando el lector entendio mal, y si lo leido no pisara el valor anterior ese
+ * reintento no serviria de nada. Nada se guarda hasta pulsar el boton, asi que
+ * siempre queda ver el resultado y corregirlo a mano despues.
  */
 const repartir = (datos: DatosTarjeta, basicos: Basicos): Basicos => ({
-  placa: basicos.placa || datos.placa || '',
-  marca: basicos.marca || datos.marca || '',
-  modelo: basicos.modelo || datos.linea || datos.modelo || '',
-  color: basicos.color || datos.color || '',
+  placa: datos.placa ?? basicos.placa,
+  marca: datos.marca ?? basicos.marca,
+  modelo: datos.linea ?? datos.modelo ?? basicos.modelo,
+  color: datos.color ?? basicos.color,
 });
 
 /** Quita los campos vacios: mandar cadenas vacias borraria datos guardados. */
@@ -101,8 +118,14 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
 
   const completar = (leido: DatosTarjeta) => {
     setBasicos((anterior) => repartir(leido, anterior));
-    setDocumento((anterior) => juntarTarjeta(anterior, leido));
+    // Solo los campos del documento: los otros cuatro viven en `basicos`, que
+    // es donde se corrigen, y guardarlos tambien desde aqui le ganaria a lo
+    // que la persona tiene delante en la pantalla.
+    setDocumento((anterior) => ({ ...anterior, ...soloDelDocumento(leido) }));
   };
+
+  /** Lectura descartada: se olvida lo que traia el documento anterior. */
+  const olvidarTarjeta = () => setDocumento({});
 
   const { data: clientes } = useQuery({
     queryKey: ['clientes'],
@@ -135,7 +158,7 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         </p>
       </div>
 
-      <CapturaTarjeta alLeer={completar} />
+      <CapturaTarjeta alLeer={completar} alReiniciar={olvidarTarjeta} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {esCentral && (
@@ -214,8 +237,11 @@ export function Vehiculos() {
 
   const completar = (leido: DatosTarjeta) => {
     setBasicos((anterior) => repartir(leido, anterior));
-    setDocumento((anterior) => juntarTarjeta(anterior, leido));
+    // Igual que arriba: aqui solo entra lo del documento.
+    setDocumento((anterior) => ({ ...anterior, ...soloDelDocumento(leido) }));
   };
+
+  const olvidarTarjeta = () => setDocumento({});
 
   const refrescar = () => {
     cola.invalidateQueries({ queryKey: ['vehiculos'] });
@@ -300,6 +326,7 @@ export function Vehiculos() {
             <>
               <CapturaTarjeta
                 alLeer={completar}
+                alReiniciar={olvidarTarjeta}
                 nota="Si tiene a mano la tarjeta de propiedad, fotografíela y los datos se llenan solos."
               />
 
