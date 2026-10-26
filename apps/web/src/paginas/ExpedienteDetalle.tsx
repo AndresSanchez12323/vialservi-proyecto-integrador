@@ -77,31 +77,54 @@ function Verificacion({
   const [documento, setDocumento] = useState(exp.solicitanteDocumento ?? '');
   const [relacion, setRelacion] = useState(exp.solicitanteRelacion ?? '');
   const v = exp.servicio.vehiculo;
-  const [doc, setDoc] = useState<DatosDocumento>({
+
+  /** Lo que ya esta guardado en el vehiculo: el punto de partida del formulario
+   *  y aquello a lo que se vuelve si se descarta una lectura. */
+  const guardado: DatosDocumento = {
     linea: v.linea ?? '', clase: v.clase ?? '', licenciaTransito: v.licenciaTransito ?? '',
     vin: v.vin ?? '', chasis: v.chasis ?? '', motor: v.motor ?? '',
     propietarioNombre: v.propietarioNombre ?? '', propietarioDocumento: v.propietarioDocumento ?? '',
-  });
+  };
+
+  const [doc, setDoc] = useState<DatosDocumento>(guardado);
   const [discrepancias, setDiscrepancias] = useState<string[]>([]);
 
-  /** El vehiculo llega sin documento cuando el cliente lo registro a mano. */
-  const tieneDocumento = !!(v.licenciaTransito || v.vin || v.linea);
+  /** El vehiculo llega sin ningun dato del documento. */
+  const sinDocumento = !(v.licenciaTransito || v.vin || v.linea);
 
   /**
-   * Lo leido de la tarjeta entra en las casillas SIN pisar lo que el tecnico
-   * ya haya escrito: si corrigió a mano un VIN que el lector entendio mal, una
-   * segunda foto no puede deshacer esa correccion.
+   * Que haya datos NO significa que esten comprobados: desde que el cliente
+   * puede fotografiar la tarjeta al registrar el vehiculo, lo que hay ahi
+   * puede venir de el y no haber pasado por nadie en el sitio. Lo que decide
+   * si este bloque reclama atencion es la verificacion de ESTE expediente, que
+   * es el acto del tecnico, no la presencia de datos.
+   */
+  const porConfirmar = !exp.verificadoEn;
+
+  /**
+   * Lo leido de la tarjeta MANDA sobre lo que haya en las casillas.
+   *
+   * Volver a tomar la foto es lo que hace el tecnico cuando el lector entendio
+   * mal, de modo que si la lectura nueva no pisara el valor anterior, repetir
+   * la foto no serviria para nada. Nada se guarda hasta pulsar «Guardar
+   * verificacion», asi que siempre queda ver el resultado y corregirlo.
    */
   const completarDesdeTarjeta = (leido: DatosTarjeta) => {
     setDoc((anterior) => {
       const siguiente = { ...anterior };
       for (const { clave } of CAMPOS_DOCUMENTO) {
         const valor = leido[clave]?.trim();
-        if (valor && !siguiente[clave].trim()) siguiente[clave] = valor;
+        if (valor) siguiente[clave] = valor;
       }
       return siguiente;
     });
     setDiscrepancias(compararConVehiculo(leido, v));
+  };
+
+  /** Lectura descartada: las casillas vuelven a lo que hay guardado. */
+  const olvidarTarjeta = () => {
+    setDoc(guardado);
+    setDiscrepancias([]);
   };
 
   const guardar = useMutation({
@@ -192,22 +215,28 @@ function Verificacion({
         </div>
       )}
 
-      {/* Abierto por omision cuando el vehiculo todavia no tiene documento: es
-          justo el caso en el que el tecnico TIENE que diligenciarlo, y
-          esconderlo tras un desplegable es esconder el trabajo pendiente. */}
-      <details className="mt-4" open={!tieneDocumento}>
+      {/* Abierto mientras quede trabajo: o no hay datos del documento, o los
+          hay pero nadie los ha comprobado en sitio todavia. Esconder el
+          trabajo pendiente tras un desplegable es esconderlo. */}
+      <details className="mt-4" open={sinDocumento || porConfirmar}>
         <summary className="cursor-pointer text-sm text-tinta-suave hover:text-tinta">
           Datos de la licencia de tránsito (tarjeta de propiedad)
-          {!tieneDocumento && (
+          {sinDocumento ? (
             <span className="etiqueta ml-2 border border-marca/40 bg-marca-fondo/15 text-marca">
               sin registrar
             </span>
-          )}
+          ) : porConfirmar ? (
+            <span className="etiqueta ml-2 border border-marca/40 bg-marca-fondo/15 text-marca">
+              por confirmar
+            </span>
+          ) : null}
         </summary>
         <p className="mt-2 text-xs text-tinta-tenue">
-          {tieneDocumento
-            ? 'Compruebe que coinciden con el documento que tiene en la mano y corrija lo que esté mal.'
-            : 'El cliente registró el vehículo sin la tarjeta de propiedad. Fotografíela usted, o tome los datos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo vacío: no lo complete con supuestos.'}
+          {sinDocumento
+            ? 'El vehículo no tiene registrada la tarjeta de propiedad. Fotografíela usted, o tome los datos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo vacío: no lo complete con supuestos.'
+            : porConfirmar
+              ? 'Estos datos no los ha comprobado nadie en el sitio: pueden venir de la foto que subió el cliente. Compruébelos contra el documento que tiene en la mano y corrija lo que esté mal.'
+              : 'Compruebe que coinciden con el documento que tiene en la mano y corrija lo que esté mal.'}
         </p>
 
         {/* El tecnico lee la tarjeta con la misma camara y el mismo recorrido
@@ -216,6 +245,7 @@ function Verificacion({
         <CapturaTarjeta
           className="mt-3"
           alLeer={completarDesdeTarjeta}
+          alReiniciar={olvidarTarjeta}
           nota="Dos fotos, frente y reverso. Lo leído llena las casillas de abajo y usted lo corrige antes de guardar."
         />
 

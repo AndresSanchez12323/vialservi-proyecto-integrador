@@ -99,12 +99,21 @@ function Marco({
 
 export function CapturaTarjeta({
   alLeer,
+  alReiniciar,
   conReverso = true,
   nota,
   className = '',
 }: {
   /** Se llama tras cada cara leida, con TODO lo acumulado hasta ese momento. */
   alLeer: (datos: DatosTarjeta) => void;
+  /**
+   * Se llama al empezar la lectura de cero, para que quien contiene el
+   * formulario suelte lo que vino de la tarjeta anterior. Sin esto, «volver a
+   * empezar» limpiaba las fotos de aqui pero dejaba los datos de la tarjeta
+   * descartada en el formulario, y acabarian guardandose como si fueran de la
+   * tarjeta nueva.
+   */
+  alReiniciar?: () => void;
   /** El reverso solo trae al propietario: quien no lo necesita puede apagarlo. */
   conReverso?: boolean;
   nota?: string;
@@ -162,6 +171,7 @@ export function CapturaTarjeta({
     setDatos({});
     setFallo(null);
     setPaso('frente');
+    alReiniciar?.();
   };
 
   const leidos = camposLeidos(datos);

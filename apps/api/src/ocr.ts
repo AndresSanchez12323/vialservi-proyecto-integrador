@@ -100,10 +100,23 @@ const limpiarDocumento = (valor: string) => valor.replace(/[^0-9]/g, '').slice(0
  * Textract contesta "not found" o deja la respuesta vacia cuando el dato no
  * figura. Esas respuestas se descartan: un campo con la palabra "none" dentro
  * es peor que un campo vacio, porque el usuario lo guardaria sin mirarlo.
+ *
+ * La comprobacion se hace sobre las LETRAS de la respuesta, no sobre el texto
+ * literal, y ANTES de limpiarla. Las dos cosas importan: "Not Found." con
+ * punto no coincide con una comparacion literal, y limpiar primero quitaba el
+ * espacio de "NOT FOUND" y lo convertia en "NOTFOUND", que ya no coincidia con
+ * nada y se guardaba como si fuera un VIN.
  */
-const SIN_DATO = /^(n\/?a|none|not found|no aplica|sin dato|-+)$/i;
+const SIN_DATO = /^(na|none|notfound|noaplica|sindato|nodisponible|desconocido|null)$/i;
 
-const sirve = (valor: string) => valor.length > 0 && !SIN_DATO.test(valor);
+const sirve = (valor: string) => {
+  const texto = valor.trim();
+  if (!texto) return false;
+  const letras = texto.replace(/[^a-z]/gi, '').toLowerCase();
+  // Sin letras solo sirve si al menos trae un digito: asi pasa un modelo como
+  // "2018" y se cae un guion o unos puntos suspensivos.
+  return letras ? !SIN_DATO.test(letras) : /\d/.test(texto);
+};
 
 /** Deja el campo fuera del objeto si no vino o si no dice nada. */
 const tomar = (
@@ -111,8 +124,42 @@ const tomar = (
   valor: string | undefined,
   limpiar: (v: string) => string = (v) => v.trim(),
 ): DatosTarjeta => {
-  const limpio = limpiar(valor ?? '');
-  return sirve(limpio) ? { [campo]: limpio } : {};
+  const crudo = (valor ?? '').trim();
+  if (!sirve(crudo)) return {};
+  const limpio = limpiar(crudo);
+  return limpio ? { [campo]: limpio } : {};
+};
+
+/**
+ * Arma los campos a partir de lo que contesto Textract, alias por alias.
+ *
+ * Esta separado del llamado a AWS a proposito: es donde se decide que se
+ * guarda y que se tira, o sea, lo unico que de verdad hay que poder probar
+ * sin una cuenta de AWS delante.
+ */
+export const camposDeTarjeta = (crudo: Partial<Record<keyof DatosTarjeta, string>>): DatosTarjeta => {
+  // La placa pasa por el mismo filtro que los demas campos ANTES de limpiarse.
+  // Sin eso, un "not found" quedaba en "NOTFOU" —seis caracteres, longitud
+  // valida— y la lectura fallida se devolvia como un acierto con esa placa.
+  const dePlaca = (crudo.placa ?? '').trim();
+  const placa = sirve(dePlaca) ? limpiarPlaca(dePlaca) : '';
+
+  return {
+    // La placa solo se acepta completa: media placa mal leida es peor que
+    // ninguna, porque es el identificador del vehiculo en todo el sistema.
+    ...(placa.length >= 5 ? { placa } : {}),
+    ...tomar('marca', crudo.marca),
+    ...tomar('modelo', crudo.modelo),
+    ...tomar('color', crudo.color),
+    ...tomar('linea', crudo.linea),
+    ...tomar('clase', crudo.clase),
+    ...tomar('licenciaTransito', crudo.licenciaTransito, limpiarSerie),
+    ...tomar('vin', crudo.vin, limpiarSerie),
+    ...tomar('chasis', crudo.chasis, limpiarSerie),
+    ...tomar('motor', crudo.motor, limpiarSerie),
+    ...tomar('propietarioNombre', crudo.propietarioNombre),
+    ...tomar('propietarioDocumento', crudo.propietarioDocumento, limpiarDocumento),
+  };
 };
 
 /**
@@ -164,23 +211,7 @@ export const analizarTarjeta = async (
       if (campo && resultado) crudo[campo] = textoDe(resultado);
     }
 
-    const placa = limpiarPlaca(crudo.placa ?? '');
-    const datos: DatosTarjeta = {
-      // La placa solo se acepta completa: media placa mal leida es peor que
-      // ninguna, porque es el identificador del vehiculo en todo el sistema.
-      ...(placa.length >= 5 ? { placa } : {}),
-      ...tomar('marca', crudo.marca),
-      ...tomar('modelo', crudo.modelo),
-      ...tomar('color', crudo.color),
-      ...tomar('linea', crudo.linea),
-      ...tomar('clase', crudo.clase),
-      ...tomar('licenciaTransito', crudo.licenciaTransito, limpiarSerie),
-      ...tomar('vin', crudo.vin, limpiarSerie),
-      ...tomar('chasis', crudo.chasis, limpiarSerie),
-      ...tomar('motor', crudo.motor, limpiarSerie),
-      ...tomar('propietarioNombre', crudo.propietarioNombre),
-      ...tomar('propietarioDocumento', crudo.propietarioDocumento, limpiarDocumento),
-    };
+    const datos = camposDeTarjeta(crudo);
 
     // Una foto borrosa, recortada o de otra cosa no devuelve nada util. Se
     // avisa, en vez de devolver un formulario vacio que parezca un acierto.
