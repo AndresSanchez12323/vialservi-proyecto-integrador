@@ -245,7 +245,7 @@ function Verificacion({
           className="mt-3"
           alLeer={completarDesdeTarjeta}
           alReiniciar={olvidarTarjeta}
-          nota="Una foto del frente de la licencia. Lo leído llena las casillas de abajo y usted lo corrige antes de guardar."
+          nota="Una foto del frente de la licencia: se leen la placa, la marca, la línea y el color y se comparan con el vehículo. El VIN, la licencia y lo demás tómelos del documento."
         />
 
         {discrepancias.length > 0 && (

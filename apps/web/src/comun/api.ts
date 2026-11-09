@@ -92,6 +92,9 @@ export type DatosTarjeta = {
   propietarioDocumento?: string;
 };
 
+/** Lo que de verdad devuelve la lectura de la licencia: solo estos cuatro. */
+export type LecturaTarjeta = Pick<DatosTarjeta, 'placa' | 'marca' | 'linea' | 'color'>;
+
 export type CaraTarjeta = 'frente' | 'reverso';
 
 type SubidaTarjeta = { clave: string; url: string; encabezados: Record<string, string> };
@@ -117,7 +120,7 @@ export const camposLeidos = (datos: DatosTarjeta) =>
   (Object.entries(datos) as [keyof DatosTarjeta, string | undefined][])
     .filter(([, valor]) => !!valor?.trim());
 
-export const leerTarjeta = async (archivo: File, cara: CaraTarjeta = 'frente'): Promise<DatosTarjeta> => {
+export const leerTarjeta = async (archivo: File, cara: CaraTarjeta = 'frente'): Promise<LecturaTarjeta> => {
   // La foto llega ya convertida a JPEG y redimensionada (comun/foto.ts): la
   // URL se firma con image/jpeg y S3 rechaza el PUT si no cuadra.
   if (archivo.type !== 'image/jpeg') throw new Error('La foto debe quedar en formato JPG.');
@@ -125,7 +128,7 @@ export const leerTarjeta = async (archivo: File, cara: CaraTarjeta = 'frente'): 
   const subida = await pedir<SubidaTarjeta>('/vehiculos/leer-tarjeta/preparar', { method: 'POST' });
   const carga = await fetch(subida.url, { method: 'PUT', headers: subida.encabezados, body: archivo });
   if (!carga.ok) throw new Error('No se pudo subir la foto de la tarjeta.');
-  return enviar<DatosTarjeta>('/vehiculos/leer-tarjeta/analizar', 'POST', { clave: subida.clave, cara });
+  return enviar<LecturaTarjeta>('/vehiculos/leer-tarjeta/analizar', 'POST', { clave: subida.clave, cara });
 };
 
 /** Peticion sin sesion, para registro y recuperacion de clave. */

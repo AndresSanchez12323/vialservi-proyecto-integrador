@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { enviar, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
-import { CAMPOS_TARJETA, MAX_VEHICULOS_CLIENTE } from '../comun/formato';
+import { enviar, pedir, sesion, type Cliente, type LecturaTarjeta, type Vehiculo } from '../comun/api';
+import { MAX_VEHICULOS_CLIENTE } from '../comun/formato';
 import { CapturaTarjeta } from '../comun/CapturaTarjeta';
 import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
@@ -13,37 +13,14 @@ type Basicos = { placa: string; marca: string; modelo: string; color: string };
 
 const BASICOS_VACIOS: Basicos = { placa: '', marca: '', modelo: '', color: '' };
 
-/** Lo que trae el documento y no se le pide a nadie de memoria. */
-const DEL_DOCUMENTO = CAMPOS_TARJETA.filter(
-  (c) => !['placa', 'marca', 'modelo', 'color'].includes(c.clave),
-);
-
-/**
- * Se queda SOLO con los campos del documento, tirando placa, marca, modelo y
- * color.
- *
- * Esos cuatro tienen su propia casilla arriba y es ahi donde la persona los
- * corrige. Si se guardaran tambien desde aqui, lo leido por el lector viajaria
- * en la peticion detras de lo que hay en pantalla y le ganaria: una placa
- * corregida a mano volveria a la mal leida, y en «Línea o modelo» se guardaria
- * el año del documento en vez de la linea que se ve en el formulario.
- */
-const soloDelDocumento = (datos: DatosTarjeta): DatosTarjeta =>
-  Object.fromEntries(
-    DEL_DOCUMENTO.map(({ clave }) => [clave, datos[clave]]).filter(([, valor]) => valor !== undefined),
-  );
-
 const basicosCompletos = (b: Basicos) =>
   b.placa.trim().length >= 5 && b.marca.trim().length >= 2 &&
   b.modelo.trim().length >= 2 && b.color.trim().length >= 3;
 
 /**
- * Reparte lo leido de la tarjeta entre los campos del formulario.
- *
- * El campo «Línea o modelo» de la pantalla y los campos `linea` y `modelo` del
- * documento no son lo mismo: para el documento la linea es «Corolla» y el
- * modelo es el año. En la casilla que el usuario ve se pone lo que una persona
- * escribiria ahi —la linea— y el año queda aparte, con el resto del documento.
+ * Pasa lo leido de la tarjeta a las cuatro casillas del formulario. La lectura
+ * solo trae placa, marca, linea y color; la linea va a «Línea o modelo», que
+ * es lo que una persona escribiria ahi.
  *
  * Lo que trae la foto MANDA sobre lo que hay escrito, y es a proposito: volver
  * a tomar una foto —o empezar la lectura de cero— es justo lo que hace alguien
@@ -51,59 +28,12 @@ const basicosCompletos = (b: Basicos) =>
  * reintento no serviria de nada. Nada se guarda hasta pulsar el boton, asi que
  * siempre queda ver el resultado y corregirlo a mano despues.
  */
-const repartir = (datos: DatosTarjeta, basicos: Basicos): Basicos => ({
+const repartir = (datos: LecturaTarjeta, basicos: Basicos): Basicos => ({
   placa: datos.placa ?? basicos.placa,
   marca: datos.marca ?? basicos.marca,
-  modelo: datos.linea ?? datos.modelo ?? basicos.modelo,
+  modelo: datos.linea ?? basicos.modelo,
   color: datos.color ?? basicos.color,
 });
-
-/** Quita los campos vacios: mandar cadenas vacias borraria datos guardados. */
-const soloConValor = (datos: DatosTarjeta) =>
-  Object.fromEntries(
-    Object.entries(datos).filter(([, valor]) => typeof valor === 'string' && valor.trim() !== ''),
-  );
-
-/**
- * Casillas de los datos del documento. Solo aparecen cuando la lectura de la
- * tarjeta trajo alguno: a quien registra su carro de memoria no se le pone
- * delante un VIN que no va a saber, que es la razon de que nunca se le hayan
- * pedido.
- */
-function CamposDocumento({
-  datos,
-  alCambiar,
-}: {
-  datos: DatosTarjeta;
-  alCambiar: (clave: keyof DatosTarjeta, valor: string) => void;
-}) {
-  const visibles = DEL_DOCUMENTO.filter(({ clave }) => datos[clave] !== undefined);
-  if (visibles.length === 0) return null;
-
-  return (
-    <div className="vidrio-suave space-y-3 p-4">
-      <div>
-        <p className="text-sm font-medium">Datos leídos del documento</p>
-        <p className="text-xs text-tinta-tenue">
-          Se guardan con el vehículo. Corrija lo que el lector haya entendido mal; el técnico los
-          confirma en el sitio con el documento en la mano.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {visibles.map(({ clave, etiqueta }) => (
-          <label key={clave} className="block min-w-0">
-            <span className="mb-1 block text-xs text-tinta-tenue">{etiqueta}</span>
-            <input
-              value={datos[clave] ?? ''}
-              onChange={(e) => alCambiar(clave, e.target.value)}
-              className="campo"
-            />
-          </label>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** Registro del vehiculo. El cliente registra el suyo y la central registra
  *  el de cualquiera: es el paso previo a poder solicitar un servicio, porque
@@ -113,19 +43,9 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
   const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
 
   const [basicos, setBasicos] = useState<Basicos>(BASICOS_VACIOS);
-  const [documento, setDocumento] = useState<DatosTarjeta>({});
   const [clienteId, setClienteId] = useState('');
 
-  const completar = (leido: DatosTarjeta) => {
-    setBasicos((anterior) => repartir(leido, anterior));
-    // Solo los campos del documento: los otros cuatro viven en `basicos`, que
-    // es donde se corrigen, y guardarlos tambien desde aqui le ganaria a lo
-    // que la persona tiene delante en la pantalla.
-    setDocumento((anterior) => ({ ...anterior, ...soloDelDocumento(leido) }));
-  };
-
-  /** Lectura descartada: se olvida lo que traia el documento anterior. */
-  const olvidarTarjeta = () => setDocumento({});
+  const completar = (leido: LecturaTarjeta) => setBasicos((anterior) => repartir(leido, anterior));
 
   const { data: clientes } = useQuery({
     queryKey: ['clientes'],
@@ -137,7 +57,6 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
     mutationFn: () =>
       enviar<Vehiculo>('/vehiculos', 'POST', {
         ...basicos,
-        ...soloConValor(documento),
         ...(esCentral ? { clienteId } : {}),
       }),
     onSuccess: (v) => {
@@ -158,7 +77,7 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         </p>
       </div>
 
-      <CapturaTarjeta alLeer={completar} alReiniciar={olvidarTarjeta} />
+      <CapturaTarjeta alLeer={completar} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {esCentral && (
@@ -199,11 +118,6 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         />
       </div>
 
-      <CamposDocumento
-        datos={documento}
-        alCambiar={(clave, valor) => setDocumento((anterior) => ({ ...anterior, [clave]: valor }))}
-      />
-
       <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Guardando…' : 'Registrar vehículo'}
       </button>
@@ -233,15 +147,8 @@ export function Vehiculos() {
   });
 
   const [basicos, setBasicos] = useState<Basicos>(BASICOS_VACIOS);
-  const [documento, setDocumento] = useState<DatosTarjeta>({});
 
-  const completar = (leido: DatosTarjeta) => {
-    setBasicos((anterior) => repartir(leido, anterior));
-    // Igual que arriba: aqui solo entra lo del documento.
-    setDocumento((anterior) => ({ ...anterior, ...soloDelDocumento(leido) }));
-  };
-
-  const olvidarTarjeta = () => setDocumento({});
+  const completar = (leido: LecturaTarjeta) => setBasicos((anterior) => repartir(leido, anterior));
 
   const refrescar = () => {
     cola.invalidateQueries({ queryKey: ['vehiculos'] });
@@ -252,12 +159,10 @@ export function Vehiculos() {
     mutationFn: () =>
       enviar<Vehiculo>('/vehiculos', 'POST', {
         ...basicos,
-        ...soloConValor(documento),
         clienteId: yo?.id,
       }),
     onSuccess: async (v) => {
       setBasicos(BASICOS_VACIOS);
-      setDocumento({});
       refrescar();
       // Registrar un vehiculo casi siempre es el paso previo a pedir algo,
       // asi que se ofrece el atajo en vez de dejarlo buscar el formulario.
@@ -326,8 +231,7 @@ export function Vehiculos() {
             <>
               <CapturaTarjeta
                 alLeer={completar}
-                alReiniciar={olvidarTarjeta}
-                nota="Si tiene a mano la tarjeta de propiedad, fotografíela y los datos se llenan solos."
+                nota="Si tiene a mano la licencia de tránsito, fotografíe el frente y la placa, la marca, la línea y el color se llenan solos."
               />
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -337,15 +241,10 @@ export function Vehiculos() {
                 <input value={basicos.color} onChange={(e) => setBasicos({ ...basicos, color: e.target.value })} placeholder="Color" className="campo" />
               </div>
 
-              <CamposDocumento
-                datos={documento}
-                alCambiar={(clave, valor) => setDocumento((anterior) => ({ ...anterior, [clave]: valor }))}
-              />
-
               <p className="text-xs text-tinta-tenue">
-                Solo le pedimos los cuatro datos de arriba. El VIN y el número de la tarjeta de
-                propiedad no hace falta buscarlos: salen de la foto, o los toma el técnico en el
-                sitio con el documento en la mano.
+                Solo le pedimos los cuatro datos de arriba. El VIN y el número de la licencia de
+                tránsito no hace falta buscarlos: los toma el técnico en el sitio con el documento
+                en la mano.
               </p>
               <button
                 className="boton"

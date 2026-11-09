@@ -1,9 +1,9 @@
 /**
  * Lectura de la licencia de transito: una sola foto, la del FRENTE.
  *
- * El frente trae los datos del vehiculo y tambien al propietario con su
- * identificacion, asi que por decision del equipo (nov. 2026) ya no se pide el
- * reverso. El paso del reverso sigue disponible con `conReverso`, apagado.
+ * Del frente solo se toman placa, marca, linea y color (decision del equipo,
+ * nov. 2026); el VIN, el numero de la licencia y lo demas los toma el tecnico
+ * en el sitio. El paso del reverso sigue disponible con `conReverso`, apagado.
  *
  * Historia del diseño anterior, de dos tomas:
  *
@@ -37,7 +37,7 @@ const GUIA: Record<CaraTarjeta, { titulo: string; ayuda: string; numero: string 
   frente: {
     numero: '1',
     titulo: 'Frente del documento',
-    ayuda: 'El lado donde están la placa, la marca, la línea y el propietario del vehículo.',
+    ayuda: 'El lado donde están la placa, la marca, la línea y el color del vehículo.',
   },
   reverso: {
     numero: '2',

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Block } from '@aws-sdk/client-textract';
-import { camposDeTarjeta, leerPorPosicion, limpiarPlaca, renglonesDeTextract, type Renglon } from './ocr.js';
+import { camposDeTarjeta, leerPorPosicion, limpiarPlaca, paraElFormulario, renglonesDeTextract, type Renglon } from './ocr.js';
 
 const ALTO_ROTULO = 0.009;
 const ALTO_VALOR = 0.016;
@@ -129,6 +129,12 @@ describe('Lectura del frente de la licencia de transito', () => {
     const datos = leer(comoTextract(plata));
     expect(datos.color).toBe('PLATA');
     expect(datos.placa).toBe('ABC12D');
+  });
+
+  it('al formulario solo llegan placa, marca, linea y color: ni VIN ni numero de licencia', () => {
+    expect(paraElFormulario(leer(comoTextract(FRENTE)))).toEqual({
+      placa: 'ABC12D', marca: 'YAMAHA', linea: 'FZ 2.0', color: 'AZUL NEGRO',
+    });
   });
 
   it('el tipo de documento no se pega al nombre del propietario', () => {

@@ -380,19 +380,37 @@ export const renglonesDeTextract = (bloques: Block[]): Renglon[] => {
 };
 
 /**
- * Cuando una lectura cuenta como aprovechable: tiene la placa y al menos otro
- * dato del vehiculo. Asi se distingue la foto de la licencia de cualquier
- * otra foto, sin exigir campos que algunas licencias no imprimen.
+ * Lo unico que la lectura le entrega al formulario: placa, marca, linea y
+ * color (decision del equipo, nov. 2026). El VIN, el numero de la licencia y
+ * los demas datos los toma el tecnico en el sitio con el documento en la mano.
+ *
+ * El lector sigue reconociendo todos los rotulos de la licencia porque los
+ * necesita como limites de columna (MODELO cierra la columna de LINEA, por
+ * ejemplo); simplemente no los devuelve.
  */
-const suficiente = (datos: DatosTarjeta) =>
-  !!datos.placa && [datos.marca, datos.linea, datos.modelo, datos.color, datos.clase, datos.vin].some(Boolean);
+export const CAMPOS_ENTREGADOS = ['placa', 'marca', 'linea', 'color'] as const;
+export type DatosEntregados = Pick<DatosTarjeta, (typeof CAMPOS_ENTREGADOS)[number]>;
+
+export const paraElFormulario = (datos: DatosTarjeta): DatosEntregados => {
+  const salida: DatosEntregados = {};
+  for (const campo of CAMPOS_ENTREGADOS) if (datos[campo]) salida[campo] = datos[campo];
+  return salida;
+};
 
 /**
- * Lee el frente de la licencia de transito y devuelve los campos que encontro.
+ * Cuando una lectura cuenta como aprovechable: tiene la placa y al menos otro
+ * de los datos que se entregan. Asi se distingue la foto de la licencia de
+ * cualquier otra foto.
+ */
+const suficiente = (datos: DatosEntregados) => !!datos.placa && [datos.marca, datos.linea, datos.color].some(Boolean);
+
+/**
+ * Lee el frente de la licencia de transito y devuelve placa, marca, linea y
+ * color, los que encontro.
  * La foto se elimina siempre al terminar, version incluida: no es una
  * evidencia del servicio y lleva datos personales.
  */
-export const analizarTarjeta = async (clave: string): Promise<DatosTarjeta> => {
+export const analizarTarjeta = async (clave: string): Promise<DatosEntregados> => {
   if (config.OCR_MODO !== 'aws' || !config.S3_BUCKET_EVIDENCIAS) {
     throw new Error('La lectura automática requiere OCR AWS configurado.');
   }
@@ -413,7 +431,7 @@ export const analizarTarjeta = async (clave: string): Promise<DatosTarjeta> => {
     const respuesta = await textract.send(new DetectDocumentTextCommand({
       Document: { S3Object: { Bucket: config.S3_BUCKET_EVIDENCIAS, Name: clave, Version: version } },
     }));
-    const datos = camposDeTarjeta(leerPorPosicion(renglonesDeTextract(respuesta.Blocks ?? [])));
+    const datos = paraElFormulario(camposDeTarjeta(leerPorPosicion(renglonesDeTextract(respuesta.Blocks ?? []))));
 
     // Una foto borrosa, recortada o de otra cosa no devuelve nada util. Se
     // avisa, en vez de devolver un formulario vacio que parezca un acierto.
