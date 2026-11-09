@@ -240,13 +240,12 @@ function Verificacion({
         </p>
 
         {/* El tecnico lee la tarjeta con la misma camara y el mismo recorrido
-            de dos caras que el cliente. El reverso importa especialmente aqui:
-            es el lado que trae al propietario. */}
+            que el cliente: una foto del frente, que trae tambien al propietario. */}
         <CapturaTarjeta
           className="mt-3"
           alLeer={completarDesdeTarjeta}
           alReiniciar={olvidarTarjeta}
-          nota="Dos fotos, frente y reverso. Lo leído llena las casillas de abajo y usted lo corrige antes de guardar."
+          nota="Una foto del frente de la licencia. Lo leído llena las casillas de abajo y usted lo corrige antes de guardar."
         />
 
         {discrepancias.length > 0 && (

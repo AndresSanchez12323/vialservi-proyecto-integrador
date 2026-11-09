@@ -90,8 +90,8 @@ export const CAMPOS_TARJETA: {
   { clave: 'vin', etiqueta: 'VIN', cara: 'frente' },
   { clave: 'chasis', etiqueta: 'Chasis', cara: 'frente' },
   { clave: 'motor', etiqueta: 'Motor', cara: 'frente' },
-  { clave: 'propietarioNombre', etiqueta: 'Propietario según el documento', cara: 'reverso' },
-  { clave: 'propietarioDocumento', etiqueta: 'Documento del propietario', cara: 'reverso' },
+  { clave: 'propietarioNombre', etiqueta: 'Propietario según el documento', cara: 'frente' },
+  { clave: 'propietarioDocumento', etiqueta: 'Documento del propietario', cara: 'frente' },
 ];
 
 export const etiquetaTarjeta = (clave: keyof DatosTarjeta): string =>

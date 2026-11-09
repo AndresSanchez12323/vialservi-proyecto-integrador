@@ -61,11 +61,16 @@ Resources:
               # descarta al terminar. El permiso se limita a ese prefijo a
               # proposito: las evidencias del expediente son el soporte
               # probatorio del servicio y nada en el aplicativo las borra.
+              # Con DeleteObjectVersion la foto se borra de verdad: el bucket
+              # guarda versiones y borrar solo la clave la dejaba como version
+              # anterior.
               - Effect: Allow
-                Action: s3:DeleteObject
+                Action: [s3:DeleteObject, s3:DeleteObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/ocr-tarjetas/*'
+              # Lectura del texto con su posicion; los campos se toman por
+              # columna en el codigo (apps/api/src/ocr.ts).
               - Effect: Allow
-                Action: textract:AnalyzeDocument
+                Action: textract:DetectDocumentText
                 Resource: '*'
               - Effect: Allow
                 Action: ses:SendEmail

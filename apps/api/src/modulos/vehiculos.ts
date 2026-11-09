@@ -5,7 +5,7 @@ import { autenticar, exigirRol } from '../auth.js';
 import { CERRADOS } from '../estado.js';
 import { randomUUID } from 'node:crypto';
 import { eliminarObjeto, urlDeSubidaTarjeta } from '../almacenamiento.js';
-import { analizarTarjeta, type CaraTarjeta } from '../ocr.js';
+import { analizarTarjeta } from '../ocr.js';
 
 // Datos del documento del vehiculo. Al cliente no se le PIDEN en el
 // formulario: los identificadores de la licencia de transito (VIN, chasis,
@@ -70,11 +70,10 @@ rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol(...LEEN_TARJETA), async 
 rutasVehiculos.post('/leer-tarjeta/analizar', exigirRol(...LEEN_TARJETA), async (req, res) => {
   const clave = typeof req.body?.clave === 'string' ? req.body.clave : '';
   if (!clave) return res.status(400).json({ error: 'Falta la imagen de la tarjeta.' });
-  // Por omision el frente: es la cara que trae los datos del vehiculo y la
-  // unica que se leia antes de que existiera el paso del reverso.
-  const cara: CaraTarjeta = req.body?.cara === 'reverso' ? 'reverso' : 'frente';
+  // Solo se lee el frente: trae los datos del vehiculo y tambien al
+  // propietario. Un campo `cara` de clientes viejos se ignora.
   try {
-    res.json(await analizarTarjeta(clave, cara));
+    res.json(await analizarTarjeta(clave));
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : 'No se pudo leer la tarjeta.';
     res.status(422).json({ error: mensaje });

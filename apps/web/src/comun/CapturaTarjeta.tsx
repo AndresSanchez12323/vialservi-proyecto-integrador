@@ -1,5 +1,11 @@
 /**
- * Lectura de la licencia de transito en dos tomas: frente y reverso.
+ * Lectura de la licencia de transito: una sola foto, la del FRENTE.
+ *
+ * El frente trae los datos del vehiculo y tambien al propietario con su
+ * identificacion, asi que por decision del equipo (nov. 2026) ya no se pide el
+ * reverso. El paso del reverso sigue disponible con `conReverso`, apagado.
+ *
+ * Historia del diseño anterior, de dos tomas:
  *
  * ── Por que dos pasos guiados y no un solo boton de «subir foto» ──────────
  * El documento lleva los datos del vehiculo por un lado y los del propietario
@@ -31,7 +37,7 @@ const GUIA: Record<CaraTarjeta, { titulo: string; ayuda: string; numero: string 
   frente: {
     numero: '1',
     titulo: 'Frente del documento',
-    ayuda: 'El lado donde están la placa, la marca y la línea del vehículo.',
+    ayuda: 'El lado donde están la placa, la marca, la línea y el propietario del vehículo.',
   },
   reverso: {
     numero: '2',
@@ -100,7 +106,7 @@ function Marco({
 export function CapturaTarjeta({
   alLeer,
   alReiniciar,
-  conReverso = true,
+  conReverso = false,
   nota,
   className = '',
 }: {
@@ -208,7 +214,9 @@ export function CapturaTarjeta({
         <div className="min-w-0">
           <p className="text-sm font-medium">Leer la tarjeta de propiedad</p>
           <p className="text-xs text-tinta-tenue">
-            {nota ?? 'Se toma una foto de cada cara y los datos quedan editables antes de guardar.'}
+            {nota ?? (conReverso
+              ? 'Se toma una foto de cada cara y los datos quedan editables antes de guardar.'
+              : 'Se toma una foto del frente de la licencia y los datos quedan editables antes de guardar.')}
           </p>
         </div>
         {conReverso && (
