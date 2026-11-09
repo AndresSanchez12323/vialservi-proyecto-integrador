@@ -55,8 +55,8 @@ const ESPERADO = {
   modelo: '2021',
   color: 'AZUL NEGRO',
   clase: 'MOTOCICLETA',
-  licenciaTransito: '10099988877',
-  vin: '9C6KE1234M0012345',
+  // Ni el VIN ni el numero de la licencia: estan impresos en la foto, pero el
+  // sistema no recoge esos datos.
   chasis: '9C6KE1234M0012345',
   motor: 'G3K8E-1234567',
   propietarioNombre: 'PEREZ GOMEZ JUAN CARLOS',
@@ -158,7 +158,7 @@ describe('Validacion de cada campo', () => {
 
   it('descarta las respuestas de "no hay dato", aunque lleven espacios o punto', () => {
     expect(camposDeTarjeta({
-      placa: 'NOT FOUND', marca: 'Not Found.', linea: 'N/A', clase: 'no aplica', vin: 'NOT FOUND',
+      placa: 'NOT FOUND', marca: 'Not Found.', linea: 'N/A', clase: 'no aplica',
       chasis: 'sin dato', motor: '******', propietarioNombre: 'none', propietarioDocumento: 'N/A',
     })).toEqual({});
   });

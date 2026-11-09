@@ -444,17 +444,19 @@ describe('V. Verificacion de quien entrega el vehiculo', () => {
     expect(exp.esPropietario).toBe(true);
   });
 
-  it('V7 · el tecnico completa los datos de la licencia de transito del vehiculo', async () => {
+  it('V7 · el tecnico completa datos del documento, pero el VIN y la licencia no se guardan', async () => {
     const { expedienteId, vehiculoId } = await servicioEnEjecucion();
     await como(tecnico1)(
       request(app).patch(`/api/expedientes/${expedienteId}/verificacion`).send({
         esPropietario: true, version: 1,
+        // Un cliente viejo o malicioso podria mandarlos: el esquema los descarta.
         vehiculo: { vin: '9GAJC5220RB099999', licenciaTransito: '55667788', clase: 'Automóvil' },
       }),
     );
     const v = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
-    expect(v.vin).toBe('9GAJC5220RB099999');
-    expect(v.licenciaTransito).toBe('55667788');
+    expect(v.clase).toBe('Automóvil');
+    expect(v.vin).toBeNull();
+    expect(v.licenciaTransito).toBeNull();
   });
 
   it('V8 · por la verificacion NO se puede cambiar la placa del vehiculo', async () => {
@@ -467,13 +469,13 @@ describe('V. Verificacion de quien entrega el vehiculo', () => {
         // La placa va a proposito en la peticion: identifica al vehiculo del
         // servicio y cambiarla aqui seria cambiar de vehiculo a mitad de un
         // expediente, asi que el esquema la descarta en silencio.
-        vehiculo: { placa: 'ZZZ999', vin: '9GAJC5220RB011111' },
+        vehiculo: { placa: 'ZZZ999', chasis: '9GAJC5220RB011111' },
       }),
     );
 
     const despues = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
     expect(despues.placa).toBe(antes.placa);
-    expect(despues.vin).toBe('9GAJC5220RB011111');
+    expect(despues.chasis).toBe('9GAJC5220RB011111');
   });
 });
 
@@ -505,7 +507,7 @@ describe('L. Licencia de transito', () => {
     expect(r.body.error).toMatch(/imagen/i);
   });
 
-  it('L3 · al registrar el vehiculo se guardan los datos leidos del documento', async () => {
+  it('L3 · al registrar el vehiculo se guardan los datos del documento, salvo VIN y licencia', async () => {
     const { documento, token } = await registrarCliente();
     const placa = placaNueva();
 
@@ -523,8 +525,9 @@ describe('L. Licencia de transito', () => {
     expect(r.status).toBe(201);
 
     const v = await prisma.vehiculo.findUniqueOrThrow({ where: { placa } });
-    expect(v.licenciaTransito).toBe('11223344');
-    expect(v.vin).toBe('9FBJC5220RB077777');
+    // El sistema no recoge el VIN ni el numero de la licencia de transito.
+    expect(v.licenciaTransito).toBeNull();
+    expect(v.vin).toBeNull();
     expect(v.linea).toBe('Logan Life');
     expect(v.propietarioDocumento).toBe(documento);
   });

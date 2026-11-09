@@ -18,9 +18,13 @@ const idLocal = () => `loc-${Date.now()}-${Math.random().toString(36).slice(2, 8
  * documento. La placa, la marca, el modelo y el color no estan: esos ya
  * identifican al vehiculo del servicio, y cambiarlos aqui seria cambiar de
  * vehiculo a mitad de un expediente.
+ *
+ * El VIN y el numero de la licencia de transito no estan: el sistema no
+ * recoge esos datos (decision del equipo, nov. 2026), y la API los descarta
+ * si llegan.
  */
 const CLAVES_DOCUMENTO = [
-  'linea', 'clase', 'licenciaTransito', 'vin', 'chasis', 'motor',
+  'linea', 'clase', 'chasis', 'motor',
   'propietarioNombre', 'propietarioDocumento',
 ] as const;
 
@@ -81,16 +85,16 @@ function Verificacion({
   /** Lo que ya esta guardado en el vehiculo: el punto de partida del formulario
    *  y aquello a lo que se vuelve si se descarta una lectura. */
   const guardado: DatosDocumento = {
-    linea: v.linea ?? '', clase: v.clase ?? '', licenciaTransito: v.licenciaTransito ?? '',
-    vin: v.vin ?? '', chasis: v.chasis ?? '', motor: v.motor ?? '',
+    linea: v.linea ?? '', clase: v.clase ?? '',
+    chasis: v.chasis ?? '', motor: v.motor ?? '',
     propietarioNombre: v.propietarioNombre ?? '', propietarioDocumento: v.propietarioDocumento ?? '',
   };
 
   const [doc, setDoc] = useState<DatosDocumento>(guardado);
   const [discrepancias, setDiscrepancias] = useState<string[]>([]);
 
-  /** El vehiculo llega sin ningun dato del documento. */
-  const sinDocumento = !(v.licenciaTransito || v.vin || v.linea);
+  /** El vehiculo llega sin ningun dato del documento de los que se recogen. */
+  const sinDocumento = CLAVES_DOCUMENTO.every((clave) => !v[clave]?.trim());
 
   /**
    * Que haya datos NO significa que esten comprobados: desde que el cliente
@@ -220,7 +224,7 @@ function Verificacion({
           trabajo pendiente tras un desplegable es esconderlo. */}
       <details className="mt-4" open={sinDocumento || porConfirmar}>
         <summary className="cursor-pointer text-sm text-tinta-suave hover:text-tinta">
-          Datos de la licencia de tránsito (tarjeta de propiedad)
+          Datos del vehículo según la licencia de tránsito
           {sinDocumento ? (
             <span className="etiqueta ml-2 border border-marca/40 bg-marca-fondo/15 text-marca">
               sin registrar
@@ -233,7 +237,7 @@ function Verificacion({
         </summary>
         <p className="mt-2 text-xs text-tinta-tenue">
           {sinDocumento
-            ? 'El vehículo no tiene registrada la tarjeta de propiedad. Fotografíela usted, o tome los datos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo vacío: no lo complete con supuestos.'
+            ? 'El vehículo no tiene registrados estos datos. Fotografíe el frente de la licencia, o tómelos del documento que tiene en la mano. Si un dato no figura o no aplica, déjelo vacío: no lo complete con supuestos.'
             : porConfirmar
               ? 'Estos datos no los ha comprobado nadie en el sitio: pueden venir de la foto que subió el cliente. Compruébelos contra el documento que tiene en la mano y corrija lo que esté mal.'
               : 'Compruebe que coinciden con el documento que tiene en la mano y corrija lo que esté mal.'}
@@ -245,7 +249,7 @@ function Verificacion({
           className="mt-3"
           alLeer={completarDesdeTarjeta}
           alReiniciar={olvidarTarjeta}
-          nota="Una foto del frente de la licencia: se leen la placa, la marca, la línea y el color y se comparan con el vehículo. El VIN, la licencia y lo demás tómelos del documento."
+          nota="Una foto del frente de la licencia: se leen la placa, la marca, la línea y el color y se comparan con el vehículo. Lo demás tómelo del documento."
         />
 
         {discrepancias.length > 0 && (
@@ -521,9 +525,6 @@ export function ExpedienteDetalle() {
             <p className="text-xs uppercase text-tinta-sutil">Vehículo</p>
             <p className="font-mono text-marca">{s.vehiculo.placa}</p>
             <p className="text-sm text-tinta-suave">{s.vehiculo.marca} {s.vehiculo.modelo} · {s.vehiculo.color}</p>
-            {s.vehiculo.vin && (
-              <p className="mt-1 break-all font-mono text-[11px] text-tinta-sutil">VIN {s.vehiculo.vin}</p>
-            )}
           </div>
           <div>
             <p className="text-xs uppercase text-tinta-sutil">Cliente</p>
@@ -611,51 +612,6 @@ export function ExpedienteDetalle() {
 
       {/* La verificacion es del tecnico, y solo mientras el expediente este abierto. */}
       {esTecnico && !cerrado && <Verificacion exp={data} alTerminar={refrescar} />}
-
-      {/* Terminar la atencion sin salir del expediente. En la lista de
-          servicios sigue estando el boton: quedan las dos vias. */}
-      {esTecnico && !cerrado && s.estado === 'EN_EJECUCION' && (
-        <section className="vidrio border-marca/30 p-6">
-          <h3 className="font-medium">Terminar la atención</h3>
-          {faltanParaTerminar.length > 0 ? (
-            <>
-              <p className="mt-1 text-sm text-marca">Antes de terminar faltan evidencias:</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-marca">
-                {faltanParaTerminar.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-              <p className="mt-2 text-xs text-tinta-tenue">
-                Súbalas en la sección de evidencias de esta misma página y vuelva aquí.
-              </p>
-            </>
-          ) : (
-            <p className="mt-1 text-sm text-tinta-suave">
-              Está todo lo que exige el formato. Al marcar terminado se avisa a la
-              central para que revise y cierre el expediente.
-            </p>
-          )}
-          <button
-            className="boton mt-4"
-            disabled={faltanParaTerminar.length > 0 || terminar.isPending}
-            onClick={pedirTerminar}
-            title={
-              faltanParaTerminar.length > 0
-                ? 'Suba primero las evidencias que faltan'
-                : 'Marca el servicio como terminado'
-            }
-          >
-            {terminar.isPending ? 'Marcando…' : 'Marcar terminado'}
-          </button>
-        </section>
-      )}
-      {esTecnico && !cerrado && s.estado === 'TERMINADO' && (
-        <section className="vidrio p-6">
-          <p className="text-sm text-exito">
-            ✓ Servicio marcado como terminado. Queda en manos de la central revisarlo y cerrar el expediente.
-          </p>
-        </section>
-      )}
 
       {(destino || puntoTecnico) && (
         <section className="vidrio p-6">
@@ -798,6 +754,53 @@ export function ExpedienteDetalle() {
           </div>
         )}
       </section>
+
+      {/* Terminar la atencion va AL FINAL de lo que diligencia el tecnico:
+          es el ultimo paso, despues de verificar, observar, inventariar, subir
+          evidencias y registrar novedades. En la lista de servicios sigue
+          estando el boton: quedan las dos vias. */}
+      {esTecnico && !cerrado && s.estado === 'EN_EJECUCION' && (
+        <section className="vidrio border-marca/30 p-6">
+          <h3 className="font-medium">Terminar la atención</h3>
+          {faltanParaTerminar.length > 0 ? (
+            <>
+              <p className="mt-1 text-sm text-marca">Antes de terminar faltan evidencias:</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-marca">
+                {faltanParaTerminar.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-tinta-tenue">
+                Súbalas en la sección de evidencias, más arriba en esta misma página.
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-tinta-suave">
+              Está todo lo que exige el formato. Al marcar terminado se avisa a la
+              central para que revise y cierre el expediente.
+            </p>
+          )}
+          <button
+            className="boton mt-4"
+            disabled={faltanParaTerminar.length > 0 || terminar.isPending}
+            onClick={pedirTerminar}
+            title={
+              faltanParaTerminar.length > 0
+                ? 'Suba primero las evidencias que faltan'
+                : 'Marca el servicio como terminado'
+            }
+          >
+            {terminar.isPending ? 'Marcando…' : 'Marcar terminado'}
+          </button>
+        </section>
+      )}
+      {esTecnico && !cerrado && s.estado === 'TERMINADO' && (
+        <section className="vidrio p-6">
+          <p className="text-sm text-exito">
+            ✓ Servicio marcado como terminado. Queda en manos de la central revisarlo y cerrar el expediente.
+          </p>
+        </section>
+      )}
 
       {esCentral && (
         <section className="vidrio p-6">

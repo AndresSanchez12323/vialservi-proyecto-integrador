@@ -8,15 +8,15 @@ import { eliminarObjeto, urlDeSubidaTarjeta } from '../almacenamiento.js';
 import { analizarTarjeta } from '../ocr.js';
 
 // Datos del documento del vehiculo. Al cliente no se le PIDEN en el
-// formulario: los identificadores de la licencia de transito (VIN, chasis,
-// motor) los toma el tecnico en sitio con el documento en la mano, al
-// verificar el expediente. Pedirlos al registrar solo lograria que el cliente
-// los dejara vacios o los inventara.
+// formulario: chasis y motor los toma el tecnico en sitio con el documento en
+// la mano, al verificar el expediente.
+//
+// El VIN y el numero de la licencia de transito NO se recogen (decision del
+// equipo, nov. 2026): no estan en el esquema, asi que si una peticion los trae
+// zod los descarta y nunca llegan a la base.
 const documentos = z.object({
   linea: z.string().optional(),
   clase: z.string().optional(),
-  licenciaTransito: z.string().optional(),
-  vin: z.string().optional(),
   chasis: z.string().optional(),
   motor: z.string().optional(),
   propietarioNombre: z.string().optional(),
@@ -58,7 +58,7 @@ rutasVehiculos.use(autenticar);
 // El TECNICO tambien lee la tarjeta, y no es un permiso de adorno: si el
 // cliente registro el vehiculo sin los datos del documento —que es lo normal,
 // porque no se los pedimos—, quien tiene la licencia de transito en la mano es
-// el tecnico en el sitio. Sin esto tendria que teclear el VIN a ojo.
+// el tecnico en el sitio. Sin esto tendria que teclear los datos a ojo.
 const LEEN_TARJETA = ['ADMINISTRADOR', 'CENTRAL', 'CLIENTE', 'TECNICO'] as const;
 
 rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol(...LEEN_TARJETA), async (_req, res) => {

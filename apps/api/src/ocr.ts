@@ -8,6 +8,10 @@ import { config } from './config.js';
  * Todos son opcionales: un campo que no se ve en la foto se deja vacio. Un
  * campo ausente no es un error; inventarlo si lo seria, porque el usuario lo
  * guardaria sin mirarlo.
+ *
+ * El VIN y el numero de la licencia de transito NO estan, a proposito: el
+ * sistema no recoge esos datos (decision del equipo, nov. 2026). Sus rotulos
+ * se siguen reconociendo como 'otro', solo para cerrar las columnas vecinas.
  */
 export type DatosTarjeta = {
   placa?: string;
@@ -16,8 +20,6 @@ export type DatosTarjeta = {
   color?: string;
   linea?: string;
   clase?: string;
-  licenciaTransito?: string;
-  vin?: string;
   chasis?: string;
   motor?: string;
   propietarioNombre?: string;
@@ -53,7 +55,7 @@ type TipoRotulo = keyof DatosTarjeta | 'otro';
  * se tome como valor.
  */
 const ROTULOS: { tipo: TipoRotulo; patron: RegExp }[] = [
-  { tipo: 'licenciaTransito', patron: /^LICENCIA DE TRANSITO( NO\.?| N[O°º]\.?)?$/ },
+  { tipo: 'otro', patron: /^LICENCIA DE TRANSITO( NO\.?| N[O°º]\.?)?$/ },
   { tipo: 'placa', patron: /^PLACA$/ },
   { tipo: 'marca', patron: /^MARCA$/ },
   { tipo: 'linea', patron: /^LINEA$/ },
@@ -67,7 +69,7 @@ const ROTULOS: { tipo: TipoRotulo; patron: RegExp }[] = [
   { tipo: 'otro', patron: /^CAPACIDAD( KG\/?PSJ| KG \/ PSJ)?$/ },
   { tipo: 'motor', patron: /^(NUMERO|NO\.?|N[°º])( DE)? MOTOR$/ },
   { tipo: 'otro', patron: /^REG\.?$/ },
-  { tipo: 'vin', patron: /^VIN$/ },
+  { tipo: 'otro', patron: /^VIN$/ },
   { tipo: 'otro', patron: /^(NUMERO|NO\.?|N[°º])( DE)? SERIE$/ },
   { tipo: 'chasis', patron: /^(NUMERO|NO\.?|N[°º])( DE)? CHASIS$/ },
   { tipo: 'propietarioNombre', patron: /^PROPIETARIO:?( APELLIDO\(?S\)? Y NOMBRE\(?S\)?)?$/ },
@@ -206,23 +208,13 @@ const valorBajo = (rotulo: Rotulo, rotulos: Rotulo[], valores: Caja[]) => {
   ));
 };
 
-/** El numero de la licencia va a la DERECHA de su rotulo, en la misma fila. */
-const valorALaDerecha = (rotulo: Rotulo, valores: Caja[]) => {
-  const h = alto(rotulo);
-  return leerEnOrden(valores.filter((p) =>
-    p.x0 > rotulo.x1 - h && Math.abs(centroY(p) - centroY(rotulo)) < h * 1.2,
-  ));
-};
-
 /** Arma los datos crudos (sin limpiar) a partir de los renglones de la foto. */
 export const leerPorPosicion = (renglones: Renglon[]): Partial<Record<keyof DatosTarjeta, string>> => {
   const { rotulos, valores } = clasificar(renglones);
   const crudo: Partial<Record<keyof DatosTarjeta, string>> = {};
   for (const rotulo of rotulos) {
     if (rotulo.tipo === 'otro' || crudo[rotulo.tipo]) continue;
-    const valor = rotulo.tipo === 'licenciaTransito'
-      ? valorALaDerecha(rotulo, valores)
-      : valorBajo(rotulo, rotulos, valores);
+    const valor = valorBajo(rotulo, rotulos, valores);
     if (valor) crudo[rotulo.tipo] = valor;
   }
   return crudo;
@@ -260,7 +252,7 @@ const limpiarAnio = (valor: string) => {
   return anio && Number(anio) <= new Date().getFullYear() + 1 ? anio : undefined;
 };
 
-/** Series del documento (VIN, chasis, motor): alfanumericas, con algun digito. */
+/** Series del documento (chasis, motor): alfanumericas, con algun digito. */
 const limpiarSerie = (valor: string) => {
   const serie = normalizar(valor).replace(/[^A-Z0-9-]/g, '').slice(0, 30);
   return serie.length >= 5 && /\d/.test(serie) ? serie : undefined;
@@ -306,11 +298,6 @@ const LIMPIEZA: Record<keyof DatosTarjeta, (v: string) => string | undefined> = 
   modelo: limpiarAnio,
   color: limpiarTexto,
   clase: limpiarTexto,
-  licenciaTransito: (v) => {
-    const n = normalizar(v).replace(/[^A-Z0-9]/g, '');
-    return n.length >= 6 && /\d/.test(n) ? n.slice(0, 30) : undefined;
-  },
-  vin: limpiarSerie,
   chasis: limpiarSerie,
   motor: limpiarSerie,
   propietarioNombre: limpiarNombre,
@@ -381,8 +368,8 @@ export const renglonesDeTextract = (bloques: Block[]): Renglon[] => {
 
 /**
  * Lo unico que la lectura le entrega al formulario: placa, marca, linea y
- * color (decision del equipo, nov. 2026). El VIN, el numero de la licencia y
- * los demas datos los toma el tecnico en el sitio con el documento en la mano.
+ * color (decision del equipo, nov. 2026). El VIN y el numero de la licencia
+ * no se recogen nunca; los demas datos los toma el tecnico en el sitio.
  *
  * El lector sigue reconociendo todos los rotulos de la licencia porque los
  * necesita como limites de columna (MODELO cierra la columna de LINEA, por

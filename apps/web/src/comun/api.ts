@@ -84,8 +84,6 @@ export type DatosTarjeta = {
   color?: string;
   linea?: string;
   clase?: string;
-  licenciaTransito?: string;
-  vin?: string;
   chasis?: string;
   motor?: string;
   propietarioNombre?: string;
@@ -163,8 +161,8 @@ export type ServicioResumen = {
 
 export type Vehiculo = {
   id: number; placa: string; marca: string; modelo: string; color: string;
-  linea?: string | null; clase?: string | null; licenciaTransito?: string | null;
-  vin?: string | null; chasis?: string | null; motor?: string | null;
+  linea?: string | null; clase?: string | null;
+  chasis?: string | null; motor?: string | null;
   propietarioNombre?: string | null; propietarioDocumento?: string | null;
   cliente?: { id: number; nombre: string; documento: string };
   inventario?: { id: number; descripcion: string; cantidad: number }[];

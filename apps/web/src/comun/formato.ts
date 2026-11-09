@@ -86,8 +86,6 @@ export const CAMPOS_TARJETA: {
   { clave: 'modelo', etiqueta: 'Modelo', cara: 'frente' },
   { clave: 'color', etiqueta: 'Color', cara: 'frente' },
   { clave: 'clase', etiqueta: 'Clase de vehículo', cara: 'frente' },
-  { clave: 'licenciaTransito', etiqueta: 'N.º licencia de tránsito', cara: 'frente' },
-  { clave: 'vin', etiqueta: 'VIN', cara: 'frente' },
   { clave: 'chasis', etiqueta: 'Chasis', cara: 'frente' },
   { clave: 'motor', etiqueta: 'Motor', cara: 'frente' },
   { clave: 'propietarioNombre', etiqueta: 'Propietario según el documento', cara: 'frente' },

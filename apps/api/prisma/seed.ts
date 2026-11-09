@@ -90,8 +90,8 @@ async function main() {
   const veh1 = await prisma.vehiculo.create({
     data: {
       placa: 'ABC123', marca: 'Chevrolet', modelo: 'Spark GT', color: 'Rojo', clienteId: cli1.id,
-      linea: 'Spark GT 1.2', clase: 'Automóvil', licenciaTransito: '11223344',
-      vin: '9GAJC5220RB012345', chasis: 'JC5220RB012345', motor: 'B12D1-0456789',
+      linea: 'Spark GT 1.2', clase: 'Automóvil',
+      chasis: 'JC5220RB012345', motor: 'B12D1-0456789',
       propietarioNombre: 'Santiago Gómez', propietarioDocumento: '71234567',
     },
   });

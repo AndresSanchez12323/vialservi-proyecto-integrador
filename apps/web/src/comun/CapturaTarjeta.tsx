@@ -2,8 +2,8 @@
  * Lectura de la licencia de transito: una sola foto, la del FRENTE.
  *
  * Del frente solo se toman placa, marca, linea y color (decision del equipo,
- * nov. 2026); el VIN, el numero de la licencia y lo demas los toma el tecnico
- * en el sitio. El paso del reverso sigue disponible con `conReverso`, apagado.
+ * nov. 2026). El VIN y el numero de la licencia de transito no los recoge el
+ * sistema, ni por foto ni a mano. El paso del reverso sigue disponible con `conReverso`, apagado.
  *
  * Historia del diseño anterior, de dos tomas:
  *

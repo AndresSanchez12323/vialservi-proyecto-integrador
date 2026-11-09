@@ -242,9 +242,7 @@ export function Vehiculos() {
               </div>
 
               <p className="text-xs text-tinta-tenue">
-                Solo le pedimos los cuatro datos de arriba. El VIN y el número de la licencia de
-                tránsito no hace falta buscarlos: los toma el técnico en el sitio con el documento
-                en la mano.
+                Solo le pedimos los cuatro datos de arriba.
               </p>
               <button
                 className="boton"
@@ -286,26 +284,6 @@ export function Vehiculos() {
             <p className="font-mono text-lg text-marca">{v.placa}</p>
             <p className="mt-1 text-sm">{v.marca} {v.modelo}</p>
             <p className="text-sm text-tinta-tenue">Color {v.color.toLowerCase()}</p>
-
-            {/* Lo que vino de la tarjeta de propiedad, sea de la foto del
-                cliente o de lo que el tecnico tomo en sitio. Si esta vacio, al
-                vehiculo le falta el documento. */}
-            {(v.vin || v.licenciaTransito) && (
-              <dl className="mt-3 space-y-0.5 border-t border-velo/10 pt-2 text-xs text-tinta-tenue">
-                {v.licenciaTransito && (
-                  <div className="flex justify-between gap-2">
-                    <dt className="shrink-0">Lic. tránsito</dt>
-                    <dd className="min-w-0 break-all text-right font-mono">{v.licenciaTransito}</dd>
-                  </div>
-                )}
-                {v.vin && (
-                  <div className="flex justify-between gap-2">
-                    <dt className="shrink-0">VIN</dt>
-                    <dd className="min-w-0 break-all text-right font-mono">{v.vin}</dd>
-                  </div>
-                )}
-              </dl>
-            )}
 
             {esCliente ? (
               <div className="mt-3 space-y-2">
