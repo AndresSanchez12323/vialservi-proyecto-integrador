@@ -116,6 +116,21 @@ describe('Lectura del frente de la licencia de transito', () => {
     expect(leer(comoTextract(reverso))).toEqual({});
   });
 
+  it('reconoce un rotulo con una letra mal leida, como LIMEA por LINEA', () => {
+    const conErrata = FRENTE.map((r) => r.map((p) => (p.texto === 'LÍNEA' ? { ...p, texto: 'LIMEA' } : p)));
+    const datos = leer(comoTextract(conErrata));
+    expect(datos.linea).toBe('FZ 2.0');
+    expect(datos.marca).toBe('YAMAHA');
+  });
+
+  it('un valor en letra grande no se toma por rotulo aunque se parezca (PLATA no es PLACA)', () => {
+    const plata = FRENTE.map((r) => r.map((p) => (p.texto === 'AZUL' ? { ...p, texto: 'PLATA' } : p))
+      .filter((p) => p.texto !== 'NEGRO'));
+    const datos = leer(comoTextract(plata));
+    expect(datos.color).toBe('PLATA');
+    expect(datos.placa).toBe('ABC12D');
+  });
+
   it('el tipo de documento no se pega al nombre del propietario', () => {
     expect(camposDeTarjeta({ propietarioNombre: 'PEREZ GOMEZ JUAN C.C.' }).propietarioNombre).toBe('PEREZ GOMEZ JUAN');
   });

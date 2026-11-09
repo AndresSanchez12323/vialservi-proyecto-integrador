@@ -89,29 +89,86 @@ const unir = (cajas: Caja[]): Caja => ({
 const alto = (c: Caja) => c.y1 - c.y0;
 const centroY = (c: Caja) => (c.y0 + c.y1) / 2;
 
+/**
+ * Forma canonica de cada rotulo, para reconocerlo aunque el OCR cambie una
+ * letra: en fotos pequeñas Textract lee "LIMEA" por "LINEA" o "COLDR" por
+ * "COLOR", porque los rotulos van en letra diminuta.
+ */
+const CANONICOS: { tipo: TipoRotulo; texto: string }[] = [
+  { tipo: 'placa', texto: 'PLACA' },
+  { tipo: 'marca', texto: 'MARCA' },
+  { tipo: 'linea', texto: 'LINEA' },
+  { tipo: 'modelo', texto: 'MODELO' },
+  { tipo: 'otro', texto: 'CILINDRADA' },
+  { tipo: 'otro', texto: 'CILINDRADA CC' },
+  { tipo: 'color', texto: 'COLOR' },
+  { tipo: 'otro', texto: 'SERVICIO' },
+  { tipo: 'clase', texto: 'CLASE DE VEHICULO' },
+  { tipo: 'otro', texto: 'TIPO CARROCERIA' },
+  { tipo: 'otro', texto: 'COMBUSTIBLE' },
+  { tipo: 'otro', texto: 'CAPACIDAD' },
+  { tipo: 'motor', texto: 'NUMERO DE MOTOR' },
+  { tipo: 'otro', texto: 'NUMERO DE SERIE' },
+  { tipo: 'chasis', texto: 'NUMERO DE CHASIS' },
+  { tipo: 'propietarioDocumento', texto: 'IDENTIFICACION' },
+];
+
+/** Distancia de edicion (Levenshtein) entre dos textos cortos. */
+const distancia = (a: string, b: string) => {
+  let previa = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const actual = [i];
+    for (let j = 1; j <= b.length; j++) {
+      actual[j] = Math.min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previa = actual;
+  }
+  return previa[b.length];
+};
+
+/** Errores de OCR que se toleran segun el largo del rotulo. */
+const tolerancia = (largo: number) => (largo < 5 ? 0 : largo < 10 ? 1 : 2);
+
 /** Separa cada renglon en rotulos (con su tipo) y palabras de valor. */
 const clasificar = (renglones: Renglon[]) => {
-  const rotulos: Rotulo[] = [];
-  const valores: Caja[] = [];
-  for (const palabras of renglones) {
-    let i = 0;
-    while (i < palabras.length) {
-      let hallado: { tipo: TipoRotulo; n: number } | undefined;
-      for (let n = Math.min(MAX_PALABRAS_ROTULO, palabras.length - i); n >= 1 && !hallado; n--) {
-        const frase = normalizar(palabras.slice(i, i + n).map((p) => p.texto).join(' '));
-        const r = ROTULOS.find((x) => x.patron.test(frase));
-        if (r) hallado = { tipo: r.tipo, n };
-      }
-      if (hallado) {
-        rotulos.push({ ...unir(palabras.slice(i, i + hallado.n)), tipo: hallado.tipo });
-        i += hallado.n;
-      } else {
-        valores.push(palabras[i]);
-        i += 1;
+  const buscar = (frase: string, aproximado: boolean): TipoRotulo | undefined => {
+    const exacto = ROTULOS.find((x) => x.patron.test(frase));
+    if (exacto || !aproximado) return exacto?.tipo;
+    return CANONICOS.find((c) => distancia(frase, c.texto) <= tolerancia(c.texto.length))?.tipo;
+  };
+
+  // Primera pasada, solo coincidencias exactas: sirve para medir la letra de
+  // los rotulos. En la segunda se tolera un error de OCR, pero unicamente en
+  // texto de ese tamaño: un valor (letra mas grande) como el color "PLATA" no
+  // debe confundirse con el rotulo "PLACA".
+  const pasada = (altoMaximo: number) => {
+    const rotulos: Rotulo[] = [];
+    const valores: Caja[] = [];
+    for (const palabras of renglones) {
+      let i = 0;
+      while (i < palabras.length) {
+        let hallado: { tipo: TipoRotulo; n: number } | undefined;
+        for (let n = Math.min(MAX_PALABRAS_ROTULO, palabras.length - i); n >= 1 && !hallado; n--) {
+          const trozo = palabras.slice(i, i + n);
+          const frase = normalizar(trozo.map((p) => p.texto).join(' '));
+          const tipo = buscar(frase, alto(unir(trozo)) <= altoMaximo);
+          if (tipo) hallado = { tipo, n };
+        }
+        if (hallado) {
+          rotulos.push({ ...unir(palabras.slice(i, i + hallado.n)), tipo: hallado.tipo });
+          i += hallado.n;
+        } else {
+          valores.push(palabras[i]);
+          i += 1;
+        }
       }
     }
-  }
-  return { rotulos, valores };
+    return { rotulos, valores };
+  };
+
+  const exactos = pasada(0).rotulos.map(alto).sort((a, b) => a - b);
+  if (exactos.length < 3) return pasada(0);
+  return pasada(exactos[Math.floor(exactos.length / 2)] * 1.25);
 };
 
 /** Junta palabras en orden de lectura: renglon por renglon, de izquierda a derecha. */
