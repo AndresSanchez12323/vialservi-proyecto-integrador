@@ -108,7 +108,7 @@ Resources:
           SMTP_HOST: !Ref SmtpHost
           SMTP_PUERTO: !Ref SmtpPuerto
           SMTP_USUARIO: !Ref SmtpUsuario
-          CORS_ORIGIN: https://d30qod6v3z8d4e.cloudfront.net
+          CORS_ORIGIN: https://dtzoq2c228pp1.cloudfront.net
   Api:
     Type: AWS::ApiGatewayV2::Api
     Properties:
