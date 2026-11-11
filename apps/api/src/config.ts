@@ -139,8 +139,8 @@ if (config.CORREO_REVELAR_CODIGO && config.CORREO_MODO !== 'consola') {
   config.CORREO_REVELAR_CODIGO = false;
 }
 
-// En produccion estas dos cosas son fallas de seguridad, no descuidos: mejor
-// no arrancar que quedar en linea con la clave de ejemplo o filtrando codigos.
+// En produccion estas condiciones son fallas operativas o de seguridad, no
+// descuidos: mejor no arrancar que quedar en linea sin correo funcional.
 if (config.esProduccion) {
   if (config.CORREO_REVELAR_CODIGO) {
     throw new Error('CORREO_REVELAR_CODIGO no puede estar en true con NODE_ENV=production.');
@@ -152,24 +152,13 @@ if (config.esProduccion) {
     console.warn('[config] CORS_ORIGIN="*" en produccion: cualquier sitio puede llamar al API.');
   }
 
-  // El fallo mas desconcertante que puede tener este sistema: en produccion con
-  // el correo en modo consola, pedir la recuperacion responde "enviamos un
-  // codigo", el codigo queda en el log, y al usuario no le llega nada. No se
-  // puede avisar en la respuesta HTTP —eso revelaria si la cuenta existe— ni
-  // se puede impedir el arranque, porque dejaria el aplicativo caido por algo
-  // que no es critico. Asi que se grita en el log, que es el unico lugar donde
-  // el equipo puede verlo.
+  // En produccion el modo consola no sirve: el usuario nunca recibe el codigo
+  // de registro, alta de tecnico o cambio de clave. Fallar al arrancar evita
+  // publicar una aplicacion que aparenta funcionar pero no permite verificar
+  // cuentas.
   if (config.CORREO_MODO === 'consola') {
-    console.warn(
-      '\n' +
-        '┌──────────────────────────────────────────────────────────────────┐\n' +
-        '│ AVISO: la recuperacion de contrasena NO ENVIARA CORREOS.         │\n' +
-        '│ CORREO_MODO=consola en produccion: el codigo solo se imprime     │\n' +
-        '│ aqui, en el log. El usuario no recibira nada.                    │\n' +
-        '│ Para enviar de verdad hay dos caminos, ambos en el runbook §5:   │\n' +
-        '│  · CORREO_MODO=smtp con Gmail u otro: envia ya a cualquiera.     │\n' +
-        '│  · CORREO_MODO=ses: exige salir del sandbox (unas 24 horas).     │\n' +
-        '└──────────────────────────────────────────────────────────────────┘\n',
+    throw new Error(
+      'CORREO_MODO=consola no está permitido en producción. Configure smtp o ses para enviar códigos por correo.',
     );
   }
 }

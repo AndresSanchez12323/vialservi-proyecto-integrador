@@ -240,13 +240,34 @@ rutasTecnicos.post('/confirmar', exigirRol('ADMINISTRADOR'), async (req, res) =>
 rutasTecnicos.put('/:id', exigirRol('ADMINISTRADOR'), async (req, res) => {
   const datos = tecnico.partial().safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
-  const existente = await prisma.tecnico.findUnique({ where: { id: Number(req.params.id) } });
+  const existente = await prisma.tecnico.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { usuario: true },
+  });
   if (!existente) return res.status(404).json({ error: 'Tecnico no encontrado' });
   if (datos.data.documento && datos.data.documento !== existente.documento) {
-    const repetido = await prisma.tecnico.findUnique({ where: { documento: datos.data.documento } });
-    if (repetido) return res.status(409).json({ error: 'Ya existe un tecnico con ese documento' });
+    const [repetidoTecnico, repetidoUsuario] = await Promise.all([
+      prisma.tecnico.findUnique({ where: { documento: datos.data.documento } }),
+      prisma.usuario.findUnique({ where: { documento: datos.data.documento } }),
+    ]);
+    if (repetidoTecnico || repetidoUsuario) {
+      return res.status(409).json({ error: 'Ya existe un tecnico o usuario con ese documento' });
+    }
   }
-  res.json(await prisma.tecnico.update({ where: { id: existente.id }, data: datos.data }));
+  const actualizado = await prisma.$transaction(async (tx) => {
+    const ficha = await tx.tecnico.update({ where: { id: existente.id }, data: datos.data });
+    if (existente.usuarioId && existente.usuario) {
+      await tx.usuario.update({
+        where: { id: existente.usuarioId },
+        data: {
+          ...(datos.data.documento !== undefined ? { documento: datos.data.documento } : {}),
+          ...(datos.data.nombre !== undefined ? { nombre: datos.data.nombre } : {}),
+        },
+      });
+    }
+    return ficha;
+  });
+  res.json(actualizado);
 });
 
 /**

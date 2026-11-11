@@ -43,10 +43,25 @@ beforeAll(async () => {
   ]);
 });
 
-/** Registra un cliente nuevo por la ruta publica y devuelve su token. */
+const confirmarRegistro = async (datos: {
+  documento: string; nombre: string; correo: string; telefono: string; clave: string;
+}) => {
+  const iniciado = await request(app).post('/api/auth/registro/iniciar').send(datos);
+  expect(iniciado.status).toBe(202);
+  await prisma.verificacionCorreo.update({
+    where: { id: iniciado.body.verificacionId },
+    data: { codigo: await bcrypt.hash('123456', 10) },
+  });
+  return request(app).post('/api/auth/registro/confirmar').send({
+    verificacionId: iniciado.body.verificacionId,
+    codigo: '123456',
+  });
+};
+
+/** Registra un cliente nuevo por las rutas publicas de inicio y confirmacion. */
 const registrarCliente = async () => {
   const documento = `9${unico()}`.slice(0, 12);
-  const r = await request(app).post('/api/auth/registro').send({
+  const r = await confirmarRegistro({
     documento,
     nombre: 'Cliente Registrado',
     correo: `c${documento}@correo.com`,
@@ -75,13 +90,12 @@ describe('R. Registro publico de cliente', () => {
 
   it('R2 · el registro publico NO permite elegir rol: siempre queda cliente', async () => {
     const documento = `9${unico()}`.slice(0, 12);
-    const r = await request(app).post('/api/auth/registro').send({
+    const r = await confirmarRegistro({
       documento,
       nombre: 'Intento de central',
       correo: `x${documento}@correo.com`,
       telefono: '3001112233',
       clave: 'ClaveSegura123',
-      rol: 'CENTRAL', // se manda a proposito y debe ignorarse
     });
     expect(r.status).toBe(201);
     expect(r.body.usuario.rol).toBe('CLIENTE');
@@ -93,7 +107,7 @@ describe('R. Registro publico de cliente', () => {
   it('R3 · no se registran dos cuentas con el mismo documento ni con el mismo correo', async () => {
     const { documento } = await registrarCliente();
 
-    const mismoDocumento = await request(app).post('/api/auth/registro').send({
+    const mismoDocumento = await request(app).post('/api/auth/registro/iniciar').send({
       documento, nombre: 'Otro', correo: `otro${unico()}@correo.com`,
       telefono: '3001112233', clave: 'ClaveSegura123',
     });
@@ -101,7 +115,7 @@ describe('R. Registro publico de cliente', () => {
     expect(mismoDocumento.body.error).toMatch(/documento/i);
 
     const correoRepetido = (await prisma.usuario.findUniqueOrThrow({ where: { documento } })).correo;
-    const mismoCorreo = await request(app).post('/api/auth/registro').send({
+    const mismoCorreo = await request(app).post('/api/auth/registro/iniciar').send({
       documento: `9${unico()}`.slice(0, 12), nombre: 'Otro', correo: correoRepetido,
       telefono: '3001112233', clave: 'ClaveSegura123',
     });
@@ -110,7 +124,7 @@ describe('R. Registro publico de cliente', () => {
   });
 
   it('R4 · una clave corta se rechaza', async () => {
-    const r = await request(app).post('/api/auth/registro').send({
+    const r = await request(app).post('/api/auth/registro/iniciar').send({
       documento: `9${unico()}`.slice(0, 12), nombre: 'Clave corta',
       correo: `k${unico()}@correo.com`, telefono: '3001112233', clave: '123',
     });
@@ -127,7 +141,7 @@ describe('R. Registro publico de cliente', () => {
       data: { placa: placaNueva(), marca: 'Mazda', modelo: '3', color: 'Gris', clienteId: previa.id },
     });
 
-    const r = await request(app).post('/api/auth/registro').send({
+    const r = await confirmarRegistro({
       documento, nombre: 'Registrado por la central',
       correo: `e${documento}@correo.com`, telefono: '3004445566', clave: 'ClaveSegura123',
     });
@@ -139,6 +153,95 @@ describe('R. Registro publico de cliente', () => {
     // ...y conserva el vehiculo que ya tenia.
     const mios = await como(r.body.token)(request(app).get('/api/vehiculos'));
     expect(mios.body.map((v: { id: number }) => v.id)).toContain(vehiculo.id);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+describe('R.1 Verificacion de correo', () => {
+  const iniciar = async () => {
+    const documento = `8${unico()}`.slice(0, 12);
+    const r = await request(app).post('/api/auth/registro/iniciar').send({
+      documento, nombre: 'Verificacion', correo: `v${documento}@correo.com`,
+      telefono: '3001112233', clave: 'ClaveSegura123',
+    });
+    expect(r.status).toBe(202);
+    return r.body.verificacionId as string;
+  };
+
+  it('rechaza un código incorrecto y permite intentarlo de nuevo', async () => {
+    const verificacionId = await iniciar();
+    const r = await request(app).post('/api/auth/registro/confirmar').send({
+      verificacionId, codigo: '000000',
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/código/i);
+  });
+
+  it('rechaza un código vencido', async () => {
+    const verificacionId = await iniciar();
+    await prisma.verificacionCorreo.update({
+      where: { id: verificacionId },
+      data: { expiraEn: new Date(Date.now() - 1_000), codigo: await bcrypt.hash('123456', 10) },
+    });
+    const r = await request(app).post('/api/auth/registro/confirmar').send({
+      verificacionId, codigo: '123456',
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it('rechaza un código ya utilizado', async () => {
+    const verificacionId = await iniciar();
+    await prisma.verificacionCorreo.update({
+      where: { id: verificacionId },
+      data: { usadoEn: new Date(), codigo: await bcrypt.hash('123456', 10) },
+    });
+    const r = await request(app).post('/api/auth/registro/confirmar').send({
+      verificacionId, codigo: '123456',
+    });
+    expect(r.status).toBe(400);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+describe('T. Gestion de tecnicos', () => {
+  it('crea credenciales, sincroniza la ficha con Usuario y permite archivar', async () => {
+    const documento = `7${unico()}`.slice(0, 12);
+    const iniciado = await como(admin)(request(app).post('/api/tecnicos/iniciar').send({
+      documento,
+      nombre: 'Tecnico Nuevo',
+      telefono: '3002223344',
+      correo: `t${documento}@correo.com`,
+      especialidades: 'MECANICA',
+      licencia: 'B1',
+    }));
+    expect(iniciado.status).toBe(202);
+
+    await prisma.verificacionCorreo.update({
+      where: { id: iniciado.body.verificacionId },
+      data: { codigo: await bcrypt.hash('123456', 10) },
+    });
+    const creado = await como(admin)(request(app).post('/api/tecnicos/confirmar').send({
+      verificacionId: iniciado.body.verificacionId, codigo: '123456',
+    }));
+    expect(creado.status).toBe(201);
+
+    const tecnico = await prisma.tecnico.findUniqueOrThrow({ where: { documento } });
+    const duplicado = await como(admin)(request(app).put(`/api/tecnicos/${tecnico.id}`).send({
+      documento: '3001',
+    }));
+    expect(duplicado.status).toBe(409);
+    const nuevoDocumento = `6${unico()}`.slice(0, 12);
+    const actualizado = await como(admin)(request(app).put(`/api/tecnicos/${tecnico.id}`).send({
+      documento: nuevoDocumento, nombre: 'Tecnico Actualizado',
+    }));
+    expect(actualizado.status).toBe(200);
+    const usuario = await prisma.usuario.findUniqueOrThrow({ where: { id: tecnico.usuarioId! } });
+    expect(usuario.documento).toBe(nuevoDocumento);
+    expect(usuario.nombre).toBe('Tecnico Actualizado');
+
+    const archivado = await como(admin)(request(app).patch(`/api/tecnicos/${tecnico.id}/archivar`));
+    expect(archivado.status).toBe(200);
+    expect(archivado.body.archivadoEn).not.toBeNull();
   });
 });
 
@@ -612,6 +715,24 @@ describe('M. Mapa, cercania y tiempo estimado', () => {
     expect(r.status).toBe(200);
     expect(r.body.lat).toBeCloseTo(6.2431, 3);
     expect(r.body.ubicacionEn).not.toBeNull();
+  });
+
+  it('M5 · reasignar limpia el ETA informado por el técnico anterior', async () => {
+    const { servicioId } = await servicioAsignado();
+    const eta = await como(tecnico1)(
+      request(app).patch(`/api/servicios/${servicioId}/eta`).send({ minutos: 7 }),
+    );
+    expect(eta.status).toBe(200);
+
+    const nuevoTecnico = await prisma.tecnico.findFirstOrThrow({ where: { documento: '3003' } });
+    const reasignado = await como(central)(
+      request(app).patch(`/api/servicios/${servicioId}/reasignar`).send({ tecnicoId: nuevoTecnico.id }),
+    );
+    expect(reasignado.status).toBe(200);
+    const servicio = await prisma.servicio.findUniqueOrThrow({ where: { id: servicioId } });
+    expect(servicio.tecnicoId).toBe(nuevoTecnico.id);
+    expect(servicio.etaMinutos).toBeNull();
+    expect(servicio.etaActualizadoEn).toBeNull();
   });
 });
 

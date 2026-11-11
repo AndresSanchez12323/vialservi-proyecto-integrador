@@ -354,7 +354,13 @@ rutasServicios.patch('/:id/reasignar', exigirRol('CENTRAL', 'ADMINISTRADOR'), as
   const actualizado = await prisma.$transaction(async (tx) => {
     await tx.servicio.update({
       where: { id },
-      data: { tecnicoId: tecnico.id, asignadoEn: new Date(), asignadoPor: req.sesion!.id },
+      data: {
+        tecnicoId: tecnico.id,
+        asignadoEn: new Date(),
+        asignadoPor: req.sesion!.id,
+        etaMinutos: null,
+        etaActualizadoEn: null,
+      },
     });
     return tx.servicio.findUnique({ where: { id }, include: incluir });
   });

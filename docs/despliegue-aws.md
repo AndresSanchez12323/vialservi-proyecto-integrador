@@ -197,15 +197,12 @@ aunque arranquen dos tareas a la vez.
 
 ---
 
-## 5. Correo de recuperación con SES
+## 5. Correo de verificación y recuperación
 
-> ⚠️ **Si pidieron la recuperación y no llegó ningún código, lo normal es que
-> sea esto.** Recién desplegado, el API queda en `CORREO_MODO=consola`: el
-> código se genera, se guarda y se valida bien, pero **solo se imprime en
-> CloudWatch**. Al usuario no le llega nada, y la pantalla no puede avisarlo
-> —decir «esa cuenta no tiene correo» revelaría qué cédulas existen—. Desde el
-> arranque el API grita este aviso en el log; búsquenlo con
-> `aws logs tail /ecs/vialservi-api --region us-east-1`.
+> ⚠️ `CORREO_MODO=consola` solo sirve para desarrollo local. En producción el
+> API no arranca con ese valor, porque los códigos de registro, alta de
+> técnicos y cambio de contraseña nunca llegarían al usuario. Configure
+> `smtp` o `ses` antes de publicar la Lambda.
 
 ### Dos caminos
 
@@ -301,8 +298,9 @@ aws ecs describe-task-definition --task-definition vialservi-api --region us-eas
   --query "taskDefinition.containerDefinitions[0].environment[?name=='CORREO_MODO']"
 ```
 
-Si devuelve `consola`, los correos no salen. Con `ses` o `smtp` salen, y los
-rechazos del proveedor quedan en CloudWatch con el motivo.
+Si devuelve `consola`, el despliegue no es válido y la Lambda fallará al
+arrancar. Con `ses` o `smtp` los códigos sí se envían, y los rechazos del
+proveedor quedan en CloudWatch con el motivo.
 
 ### Cómo se ve el correo
 
