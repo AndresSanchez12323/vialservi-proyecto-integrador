@@ -48,6 +48,30 @@ model Usuario {
   evidencias     Evidencia[]
   notificaciones Notificacion[]
   recuperaciones RecuperacionClave[]
+  verificaciones VerificacionCorreo[]
+}
+
+enum TipoVerificacionCorreo {
+  REGISTRO_CLIENTE
+  REGISTRO_TECNICO
+  CAMBIO_CLAVE
+}
+
+model VerificacionCorreo {
+  id        String   @id @default(cuid())
+  tipo      TipoVerificacionCorreo
+  correo    String
+  codigo    String
+  datos     String
+  expiraEn  DateTime
+  usadoEn   DateTime?
+  intentos  Int      @default(0)
+  creadoEn  DateTime @default(now())
+
+  usuarioId Int?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@index([correo, tipo])
 }
 
 // Recuperacion de clave por codigo de un solo uso.
@@ -79,6 +103,7 @@ model Vehiculo {
   modelo   String
   color    String
   creadoEn DateTime @default(now())
+  archivadoEn DateTime?
 
   // escribe el TECNICO al verificar en sitio (o la central por telefono)
   linea                String?
@@ -134,6 +159,7 @@ model Tecnico {
   especialidades String // "MECANICA,CERRAJERIA,GRUA,CONDUCTOR"
   licencia       String? // categoria de licencia de conduccion
   disponible     Boolean @default(true)
+  archivadoEn    DateTime?
 
   // Ubicacion que reporta el propio tecnico. Con ella la central escoge al
   // mas cercano y el cliente ve el mapa. La escribe solo el TECNICO.
@@ -328,6 +354,7 @@ model Novedad {
 enum TipoNotificacion {
   SERVICIO_SOLICITADO // cliente pidio -> avisa a la central
   SERVICIO_ASIGNADO // central asigno -> avisa al tecnico y al cliente
+  SERVICIO_REASIGNADO // central cambio el tecnico responsable
   SERVICIO_RECHAZADO
   SERVICIO_CANCELADO
   TECNICO_EN_CAMINO // el tecnico informo tiempo de llegada -> cliente

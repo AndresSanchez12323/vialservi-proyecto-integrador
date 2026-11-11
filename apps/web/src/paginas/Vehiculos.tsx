@@ -131,6 +131,7 @@ export function Vehiculos() {
   const navegar = useNavigate();
   const rol = sesion.rol();
   const esCliente = rol === 'CLIENTE';
+  const puedeEliminar = esCliente || rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
   const [placa, setPlaca] = useState('');
   const [registrando, setRegistrando] = useState(false);
   const [ok, setOk] = useState('');
@@ -167,7 +168,7 @@ export function Vehiculos() {
   });
 
   const eliminarVehiculo = useMutation({
-    mutationFn: (id: number) => enviar(`/vehiculos/${id}`, 'DELETE'),
+    mutationFn: (id: number) => enviar(`/vehiculos/${id}/archivar`, 'PATCH'),
     onSuccess: () => {
       setVehiculoAEliminar(null);
       setOk(`Vehículo eliminado.`);
@@ -281,15 +282,15 @@ export function Vehiculos() {
               </dl>
             )}
 
-            {esCliente ? (
+            {puedeEliminar ? (
               <div className="mt-3 space-y-2">
-                <button
+                {esCliente && <button
                   className="boton-suave w-full"
                   onClick={() => navegar(`/servicios?vehiculoId=${v.id}`)}
                   title="Ir al formulario de solicitud"
                 >
                   Solicitar servicio →
-                </button>
+                </button>}
                 <button
                   className="w-full rounded-lg border border-rose-400/30 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/10 disabled:opacity-50"
                   disabled={eliminarVehiculo.isPending}
@@ -298,7 +299,7 @@ export function Vehiculos() {
                     setVehiculoAEliminar(v);
                   }}
                 >
-                  {eliminarVehiculo.isPending ? 'Eliminando…' : 'Eliminar vehículo'}
+                  {eliminarVehiculo.isPending ? 'Archivando…' : 'Archivar vehículo'}
                 </button>
               </div>
             ) : (
@@ -326,12 +327,12 @@ export function Vehiculos() {
             onClick={(e) => e.stopPropagation()}
           >
             <div>
-              <p className="text-xs uppercase tracking-wide text-rose-300">Eliminar vehículo</p>
+              <p className="text-xs uppercase tracking-wide text-rose-300">Archivar vehículo</p>
               <h3 id="titulo-eliminar-vehiculo" className="mt-1 text-lg font-semibold text-white">
-                ¿Eliminar {vehiculoAEliminar.placa}?
+                  ¿Archivar {vehiculoAEliminar.placa}?
               </h3>
               <p className="mt-2 text-sm text-slate-300">
-                Esta acción solo es posible si el vehículo no tiene expedientes ni servicios abiertos.
+                Se archivará el vehículo para conservar todos sus expedientes históricos. Solo es posible si no tiene expedientes ni servicios abiertos.
               </p>
             </div>
 
@@ -366,7 +367,7 @@ export function Vehiculos() {
                   ? 'Aceptar'
                   : eliminarVehiculo.isPending
                     ? 'Eliminando…'
-                    : 'Sí, eliminar'}
+                    :                     'Sí, archivar'}
               </button>
             </div>
           </div>

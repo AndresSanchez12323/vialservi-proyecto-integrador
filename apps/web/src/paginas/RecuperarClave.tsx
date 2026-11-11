@@ -13,6 +13,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { publico } from '../comun/api';
+import { Atras } from '../comun/Atras';
 
 export function RecuperarClave() {
   const navegar = useNavigate();
@@ -62,6 +63,9 @@ export function RecuperarClave() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="vidrio w-full max-w-md p-8">
+        <div className="mb-4">
+          <Atras destino="/login" />
+        </div>
         <h1 className="text-2xl font-semibold tracking-tight">Recuperar contraseña</h1>
         <p className="mb-6 text-sm text-slate-300">
           {paso === 1

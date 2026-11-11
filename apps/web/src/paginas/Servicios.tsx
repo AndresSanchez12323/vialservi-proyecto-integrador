@@ -89,8 +89,8 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
   const [tecnicoId, setTecnicoId] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['tablero', servicio.id],
-    queryFn: () => pedir<Tablero>(`/tecnicos/tablero?servicioId=${servicio.id}`),
+    queryKey: ['tablero', servicio.id, tipo],
+    queryFn: () => pedir<Tablero>(`/tecnicos/tablero?servicioId=${servicio.id}&tipo=${tipo}`),
     refetchInterval: 15000,
   });
 
@@ -225,6 +225,56 @@ function Clasificar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: 
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+/** Selección de reemplazo sin crear un expediente nuevo. */
+function Reasignar({ servicio, alTerminar }: { servicio: Servicio; alTerminar: () => void }) {
+  const [tecnicoId, setTecnicoId] = useState<number | null>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ['tablero-reasignar', servicio.id, servicio.tipo],
+    queryFn: () => pedir<Tablero>(`/tecnicos/tablero?servicioId=${servicio.id}&tipo=${servicio.tipo}`),
+  });
+  const mutar = useMutation({
+    mutationFn: () => enviar(`/servicios/${servicio.id}/reasignar`, 'PATCH', { tecnicoId }),
+    onSuccess: alTerminar,
+  });
+  const tecnicos = (data?.tecnicos ?? []).filter((t) => t.id !== servicio.tecnico?.id);
+
+  return (
+    <div className="vidrio-suave mt-3 space-y-3 p-4">
+      <p className="text-sm font-medium">Reasignar técnico</p>
+      <p className="text-xs text-slate-400">
+        El expediente se conserva. Seleccione otro técnico disponible para continuar la atención.
+      </p>
+      {isLoading && <p className="text-xs text-slate-400">Cargando técnicos…</p>}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {tecnicos.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            disabled={!t.apto}
+            onClick={() => setTecnicoId(t.id)}
+            className={`rounded-lg border px-3 py-2 text-left text-sm ${
+              tecnicoId === t.id ? 'border-amber-300/60 bg-amber-400/15' : 'border-white/10 bg-white/[0.06]'
+            } ${t.apto ? '' : 'cursor-not-allowed opacity-50'}`}
+          >
+            <span className="block font-medium">{t.nombre}</span>
+            <span className="text-xs text-slate-400">
+              {t.disponible ? `${t.activos ?? 0} en curso` : 'No disponible'}
+            </span>
+          </button>
+        ))}
+      </div>
+      {tecnicos.length === 0 && !isLoading && (
+        <p className="text-xs text-amber-200">No hay otro técnico con la especialidad requerida.</p>
+      )}
+      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
+      <button className="boton-suave" disabled={!tecnicoId || mutar.isPending} onClick={() => mutar.mutate()}>
+        {mutar.isPending ? 'Reasignando…' : 'Confirmar reasignación'}
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 /** Cancelar o rechazar: las dos exigen motivo, y por eso comparten el panel. */
 function ConMotivo({
   servicio,
@@ -249,7 +299,7 @@ function ConMotivo({
       <p className="text-xs text-slate-400">
         {esRechazo
           ? 'La solicitud queda registrada como no aceptada, con su motivo: el historial de lo que no se atendió también es trazabilidad.'
-          : 'La cancelación exige un motivo: así queda la trazabilidad.'}
+          : 'La cancelación exige un motivo y solo está disponible antes de que el técnico llegue e inicie la atención.'}
       </p>
       <input
         value={motivo}
@@ -657,6 +707,7 @@ export function Servicios() {
   const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
 
   const [abierto, setAbierto] = useState<number | null>(null);
+  const [reasignando, setReasignando] = useState<number | null>(null);
   const [conMotivo, setConMotivo] = useState<{ id: number; accion: 'cancelar' | 'rechazar' } | null>(null);
   const vehiculoIdInicial = esCliente ? parametros.get('vehiculoId') ?? undefined : undefined;
   const [solicitando, setSolicitando] = useState(Boolean(vehiculoIdInicial));
@@ -971,9 +1022,26 @@ export function Servicios() {
                   Cancelar
                 </button>
               )}
+              {esCentral && s.estado === 'ASIGNADO' && (
+                <button
+                  className="boton-suave"
+                  onClick={() => setReasignando(reasignando === s.id ? null : s.id)}
+                >
+                  Reasignar técnico
+                </button>
+              )}
+              {esCliente && ['SOLICITADO', 'ASIGNADO'].includes(s.estado) && (
+                <button
+                  className="boton-suave"
+                  onClick={() => setConMotivo(conMotivo?.id === s.id ? null : { id: s.id, accion: 'cancelar' })}
+                >
+                  Cancelar servicio
+                </button>
+              )}
             </div>
 
             {abierto === s.id && <Clasificar servicio={s} alTerminar={refrescar} />}
+            {reasignando === s.id && <Reasignar servicio={s} alTerminar={() => { setReasignando(null); refrescar(); }} />}
             {conMotivo?.id === s.id && (
               <ConMotivo servicio={s} accion={conMotivo.accion} alTerminar={refrescar} />
             )}

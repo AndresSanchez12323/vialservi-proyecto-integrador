@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { publico, sesion, type Sesion } from '../comun/api';
+import { Atras } from '../comun/Atras';
 
 export function Registro() {
   const navegar = useNavigate();
@@ -15,6 +16,8 @@ export function Registro() {
   });
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [verificacionId, setVerificacionId] = useState('');
+  const [codigo, setCodigo] = useState('');
 
   const cambiar = (campo: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [campo]: e.target.value });
@@ -39,8 +42,17 @@ export function Registro() {
     setError('');
     setCargando(true);
     try {
-      const r = await publico<{ token: string; usuario: Sesion; enlazadoAFichaExistente: boolean }>(
-        '/auth/registro',
+      if (verificacionId) {
+        const r = await publico<{ token: string; usuario: Sesion }>(
+          '/auth/registro/confirmar',
+          { verificacionId, codigo },
+        );
+        sesion.guardar(r.token, r.usuario);
+        navegar('/vehiculos');
+        return;
+      }
+      const r = await publico<{ verificacionId: string }>(
+        '/auth/registro/iniciar',
         {
           documento: form.documento,
           nombre: form.nombre.trim(),
@@ -49,10 +61,7 @@ export function Registro() {
           clave: form.clave,
         },
       );
-      // El registro ya devuelve la sesion: pedirle iniciar sesion otra vez
-      // seria un paso de mas sin ninguna ganancia.
-      sesion.guardar(r.token, r.usuario);
-      navegar('/vehiculos');
+      setVerificacionId(r.verificacionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No fue posible crear la cuenta');
     } finally {
@@ -63,6 +72,9 @@ export function Registro() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="vidrio w-full max-w-lg p-8">
+        <div className="mb-4">
+          <Atras destino="/login" />
+        </div>
         <h1 className="text-2xl font-semibold tracking-tight">Crear cuenta</h1>
         <p className="mb-6 text-sm text-slate-300">
           Regístrese como cliente para registrar sus vehículos y solicitar servicios.
@@ -134,8 +146,15 @@ export function Registro() {
             </p>
           )}
 
-          <button className="boton w-full" disabled={!completo || cargando}>
-            {cargando ? 'Creando cuenta…' : 'Crear cuenta'}
+          {verificacionId && (
+            <div className="space-y-2 rounded-lg border border-sky-300/30 bg-sky-400/10 p-3">
+              <p className="text-sm text-sky-100">Revise su correo e ingrese el código de verificación.</p>
+              <input className="campo text-center font-mono tracking-widest" inputMode="numeric" maxLength={6}
+                value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} placeholder="000000" />
+            </div>
+          )}
+          <button className="boton w-full" disabled={cargando || (verificacionId ? codigo.length !== 6 : !completo)}>
+            {cargando ? 'Procesando…' : verificacionId ? 'Verificar y crear cuenta' : 'Enviar código de verificación'}
           </button>
         </form>
 

@@ -42,6 +42,18 @@
     @apply rounded-2xl border border-white/15 bg-slate-900/95 shadow-2xl backdrop-blur-md;
   }
 
+  /*
+   * Chrome repinta con mayor costo las superficies con backdrop-filter durante
+   * el desplazamiento. Se conserva el efecto visual con un fondo opaco
+   * ligeramente transparente y se evita el filtro solo en Chrome.
+   */
+  .navegador-chrome .vidrio,
+  .navegador-chrome .vidrio-flotante {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background-color: rgba(25, 36, 58, 0.94);
+  }
+
   /* Las superficies interiores NO llevan desenfoque: ya estan encima de una
      tarjeta difuminada, de modo que el efecto no se nota y cada una anadia
      una capa mas que recalcular. */

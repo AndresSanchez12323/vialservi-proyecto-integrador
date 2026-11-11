@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { pedir, sesion, type Sesion } from '../comun/api';
 import { inicioPorRol } from '../comun/Atras';
 import { Logo } from '../comun/Logo';
+import { Atras } from '../comun/Atras';
 
 const DEMO = [
   { doc: '2001', quien: 'Central de Operaciones' },
@@ -43,6 +44,9 @@ export function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="vidrio w-full max-w-md p-8">
+        <div className="mb-4">
+          <Atras destino="/" />
+        </div>
         <Logo className="h-12" />
         <p className="mb-8 mt-4 text-sm text-slate-300">
           Gestión de expedientes de servicios mecánicos, de cerrajería, de grúa y de

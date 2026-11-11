@@ -2,10 +2,11 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
-import { Rol } from '@prisma/client';
+import { Rol, TipoVerificacionCorreo } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { config } from './config.js';
-import { correoRecuperacion, enviarCorreo } from './correo.js';
+import { enviarCorreo } from './correo.js';
+import { correoRecuperacion, correoVerificacion } from './plantillas.js';
 
 export type Sesion = { id: number; rol: string; nombre: string };
 
@@ -85,7 +86,7 @@ const registro = z.object({
   clave,
 });
 
-rutasAuth.post('/registro', async (req, res) => {
+rutasAuth.post('/registro/iniciar', async (req, res) => {
   const datos = registro.safeParse(req.body);
   if (!datos.success) {
     return res.status(400).json({ error: datos.error.issues[0]?.message ?? 'Datos invalidos' });
@@ -110,37 +111,100 @@ rutasAuth.post('/registro', async (req, res) => {
 
   const hash = await bcrypt.hash(datos.data.clave, VUELTAS_BCRYPT);
 
+  const verificacion = await crearVerificacion({
+    tipo: TipoVerificacionCorreo.REGISTRO_CLIENTE,
+    correo: correo.toLowerCase(),
+    nombre,
+    datos: {
+      documento, nombre, correo: correo.toLowerCase(), telefono, clave: hash,
+      fichaPreviaId: fichaPrevia?.id ?? null,
+    },
+  });
+  res.status(202).json({ verificacionId: verificacion.id, ...(config.CORREO_REVELAR_CODIGO ? { codigo: verificacion.codigo } : {}) });
+});
+
+rutasAuth.post('/registro/confirmar', async (req, res) => {
+  const datos = z.object({ verificacionId: z.string().min(1), codigo: z.string().length(6) }).safeParse(req.body);
+  if (!datos.success) return res.status(400).json({ error: 'Código inválido' });
+  let pendiente;
+  try {
+    pendiente = await validarVerificacion(datos.data.verificacionId, datos.data.codigo, TipoVerificacionCorreo.REGISTRO_CLIENTE);
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Código inválido' });
+  }
+  const registro = JSON.parse(pendiente.datos) as {
+    documento: string; nombre: string; correo: string; telefono: string; clave: string; fichaPreviaId: number | null;
+  };
   const creado = await prisma.$transaction(async (tx) => {
     const usuario = await tx.usuario.create({
-      data: { documento, nombre, correo: correo.toLowerCase(), clave: hash, rol: Rol.CLIENTE },
+      data: { documento: registro.documento, nombre: registro.nombre, correo: registro.correo, clave: registro.clave, rol: Rol.CLIENTE },
     });
-
-    if (fichaPrevia) {
-      // Enlaza la cuenta nueva con la ficha que ya tenia la central, para no
-      // perder los servicios y vehiculos que ya estuvieran a su nombre.
-      await tx.cliente.update({
-        where: { id: fichaPrevia.id },
-        data: { usuarioId: usuario.id, correo: correo.toLowerCase(), telefono },
-      });
+    if (registro.fichaPreviaId) {
+      await tx.cliente.update({ where: { id: registro.fichaPreviaId }, data: { usuarioId: usuario.id, correo: registro.correo, telefono: registro.telefono } });
     } else {
-      await tx.cliente.create({
-        data: { documento, nombre, telefono, correo: correo.toLowerCase(), usuarioId: usuario.id },
-      });
+      await tx.cliente.create({ data: { documento: registro.documento, nombre: registro.nombre, telefono: registro.telefono, correo: registro.correo, usuarioId: usuario.id } });
     }
+    await tx.verificacionCorreo.update({ where: { id: pendiente!.id }, data: { usadoEn: new Date() } });
     return usuario;
   });
-
-  // Se devuelve la sesion lista: obligar a iniciar sesion justo despues de
-  // registrarse es un paso extra sin ninguna ganancia.
   const sesion: Sesion = { id: creado.id, rol: creado.rol, nombre: creado.nombre };
   const token = jwt.sign(sesion, config.JWT_SECRET, { expiresIn: '8h' });
-  res.status(201).json({ token, usuario: sesion, enlazadoAFichaExistente: !!fichaPrevia });
+  res.status(201).json({ token, usuario: sesion, enlazadoAFichaExistente: !!registro.fichaPreviaId });
 });
 
 // ── Recuperacion de clave por codigo ─────────────────────────────────────
 const CODIGO_INTENTOS_MAX = 5;
 
 const codigoNuevo = () => String(Math.floor(100000 + Math.random() * 900000));
+
+export const crearVerificacion = async (datos: {
+  tipo: TipoVerificacionCorreo;
+  correo: string;
+  nombre: string;
+  datos: Record<string, unknown>;
+  usuarioId?: number;
+}) => {
+  const codigo = codigoNuevo();
+  const expiraEn = new Date(Date.now() + config.CODIGO_VIGENCIA_MINUTOS * 60_000);
+  const verificacion = await prisma.$transaction(async (tx) => {
+    await tx.verificacionCorreo.updateMany({
+      where: { correo: datos.correo, tipo: datos.tipo, usadoEn: null },
+      data: { usadoEn: new Date() },
+    });
+    return tx.verificacionCorreo.create({
+      data: {
+        tipo: datos.tipo,
+        correo: datos.correo,
+        codigo: await bcrypt.hash(codigo, VUELTAS_BCRYPT),
+        datos: JSON.stringify(datos.datos),
+        expiraEn,
+        usuarioId: datos.usuarioId,
+      },
+    });
+  });
+  await enviarCorreo({
+    para: datos.correo,
+    ...correoVerificacion(datos.nombre, codigo, config.CODIGO_VIGENCIA_MINUTOS),
+  });
+  return { id: verificacion.id, ...(config.CORREO_REVELAR_CODIGO ? { codigo } : {}) };
+};
+
+export const validarVerificacion = async (id: string, codigo: string, tipo: TipoVerificacionCorreo) => {
+  const pendiente = await prisma.verificacionCorreo.findFirst({
+    where: { id, tipo, usadoEn: null, expiraEn: { gt: new Date() } },
+  });
+  if (!pendiente || pendiente.intentos >= CODIGO_INTENTOS_MAX) {
+    throw new Error('El código no es válido o ya venció');
+  }
+  if (!(await bcrypt.compare(codigo, pendiente.codigo))) {
+    await prisma.verificacionCorreo.update({
+      where: { id: pendiente.id },
+      data: { intentos: { increment: 1 } },
+    });
+    throw new Error('El código no es válido o ya venció');
+  }
+  return pendiente;
+};
 
 /**
  * Paso 1: pedir el codigo.
@@ -287,4 +351,41 @@ rutasAuth.post('/clave', autenticar, async (req, res) => {
     data: { clave: await bcrypt.hash(datos.data.nueva, VUELTAS_BCRYPT) },
   });
   res.json({ ok: true, mensaje: 'Contrasena actualizada.' });
+});
+
+rutasAuth.post('/clave/iniciar', autenticar, async (req, res) => {
+  const usuario = await prisma.usuario.findUnique({ where: { id: req.sesion!.id } });
+  if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
+  const verificacion = await crearVerificacion({
+    tipo: TipoVerificacionCorreo.CAMBIO_CLAVE,
+    correo: usuario.correo,
+    nombre: usuario.nombre,
+    usuarioId: usuario.id,
+    datos: {},
+  });
+  res.json({ verificacionId: verificacion.id, ...(verificacion.codigo ? { codigo: verificacion.codigo } : {}) });
+});
+
+rutasAuth.post('/clave/confirmar', autenticar, async (req, res) => {
+  const datos = z.object({
+    verificacionId: z.string().min(1),
+    codigo: z.string().length(6),
+    nueva: clave,
+  }).safeParse(req.body);
+  if (!datos.success) return res.status(400).json({ error: 'Datos inválidos' });
+  let pendiente;
+  try {
+    pendiente = await validarVerificacion(datos.data.verificacionId, datos.data.codigo, TipoVerificacionCorreo.CAMBIO_CLAVE);
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Código inválido' });
+  }
+  if (pendiente.usuarioId !== req.sesion!.id) return res.status(403).json({ error: 'Código no válido para esta sesión' });
+  await prisma.$transaction([
+    prisma.usuario.update({
+      where: { id: req.sesion!.id },
+      data: { clave: await bcrypt.hash(datos.data.nueva, VUELTAS_BCRYPT) },
+    }),
+    prisma.verificacionCorreo.update({ where: { id: pendiente.id }, data: { usadoEn: new Date() } }),
+  ]);
+  res.json({ ok: true, mensaje: 'Contraseña actualizada.' });
 });

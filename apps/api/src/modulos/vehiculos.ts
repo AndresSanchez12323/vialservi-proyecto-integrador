@@ -90,7 +90,7 @@ rutasVehiculos.get('/', async (req, res) => {
   }
 
   const lista = await prisma.vehiculo.findMany({
-    where,
+    where: { ...where, archivadoEn: null },
     orderBy: { placa: 'asc' },
     include: { cliente: { select: { id: true, nombre: true, documento: true } } },
   });
@@ -158,15 +158,14 @@ rutasVehiculos.post('/', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async
   res.status(201).json(creado);
 });
 
-/** El cliente solo puede eliminar un vehiculo propio que aun no haya entrado
- *  al flujo operativo. Un expediente o un servicio abierto debe conservarse
- *  para no romper el historial del sistema. */
-rutasVehiculos.delete('/:id', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (req, res) => {
+/** Archivar conserva el vehiculo y todas sus relaciones historicas. Solo se
+ * permite cuando todos sus servicios y expedientes ya estan cerrados. */
+rutasVehiculos.patch('/:id/archivar', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (req, res) => {
   const id = Number(req.params.id);
   const encontrado = await prisma.vehiculo.findUnique({
     where: { id },
     include: {
-      servicios: { select: { id: true, estado: true, expediente: { select: { id: true } } } },
+      servicios: { select: { id: true, estado: true, expediente: { select: { cerradoEn: true } } } },
     },
   });
   if (!encontrado) return res.status(404).json({ error: 'Vehiculo no encontrado' });
@@ -178,15 +177,14 @@ rutasVehiculos.delete('/:id', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), 
     }
   }
 
-  if (encontrado.servicios.some((servicio) => servicio.expediente)) {
-    return res.status(409).json({ error: 'No puede eliminar el vehiculo porque tiene un expediente' });
-  }
-  if (encontrado.servicios.some((servicio) => !CERRADOS.includes(servicio.estado))) {
-    return res.status(409).json({ error: 'No puede eliminar el vehiculo porque tiene un servicio abierto' });
+  if (encontrado.servicios.some((servicio) =>
+    !CERRADOS.includes(servicio.estado) || (servicio.expediente && !servicio.expediente.cerradoEn),
+  )) {
+    return res.status(409).json({ error: 'No puede eliminar el vehiculo porque tiene un expediente o servicio abierto' });
   }
 
-  await prisma.vehiculo.delete({ where: { id } });
-  res.json({ eliminado: true });
+  await prisma.vehiculo.update({ where: { id }, data: { archivadoEn: new Date() } });
+  res.json({ eliminado: true, archivado: true });
 });
 
 /** La central completa los datos de la licencia de transito. */
