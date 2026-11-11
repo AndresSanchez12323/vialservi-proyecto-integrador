@@ -14,7 +14,7 @@
  * En tema oscuro los mosaicos se invierten por filtro (estilos.css), pero ese
  * filtro alcanza solo al panel de mosaicos y no toca estos marcadores.
  */
-import { useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -56,7 +56,15 @@ function Encuadrar({ puntos }: { puntos: Punto[] }) {
   const mapa = useMap();
 
   useEffect(() => {
+    let cuadroPendiente: number | null = null;
+    let anchoAnterior = 0;
+    let altoAnterior = 0;
+
     const ajustar = () => {
+      const { clientWidth, clientHeight } = mapa.getContainer();
+      if (clientWidth === anchoAnterior && clientHeight === altoAnterior) return;
+      anchoAnterior = clientWidth;
+      altoAnterior = clientHeight;
       mapa.invalidateSize();
       if (puntos.length === 0) return;
       if (puntos.length === 1) {
@@ -73,12 +81,21 @@ function Encuadrar({ puntos }: { puntos: Punto[] }) {
     };
 
     // Despues del primer pintado, cuando el contenedor ya tiene su tamano.
+    const programarAjuste = () => {
+      if (cuadroPendiente !== null) return;
+      cuadroPendiente = requestAnimationFrame(() => {
+        cuadroPendiente = null;
+        ajustar();
+      });
+    };
+
     const alPintar = requestAnimationFrame(ajustar);
-    const observador = new ResizeObserver(ajustar);
+    const observador = new ResizeObserver(programarAjuste);
     observador.observe(mapa.getContainer());
 
     return () => {
       cancelAnimationFrame(alPintar);
+      if (cuadroPendiente !== null) cancelAnimationFrame(cuadroPendiente);
       observador.disconnect();
     };
     // La dependencia es el contenido, no el arreglo: si se usara `puntos` el
@@ -119,7 +136,7 @@ function Seleccionar({ alElegir }: { alElegir: (p: Punto) => void }) {
 // Centro de Medellin: el encuadre inicial cuando todavia no hay ningun punto.
 const MEDELLIN: Punto = { lat: 6.2442, lng: -75.5812 };
 
-export function Mapa({
+export const Mapa = memo(function Mapa({
   destino,
   tecnico,
   tecnicos,
@@ -185,7 +202,7 @@ export function Mapa({
       </MapContainer>
     </div>
   );
-}
+});
 
 /** Resultado de pedir la ubicacion: o el punto, o el motivo de que no haya. */
 export type ResultadoUbicacion =

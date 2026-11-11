@@ -13,6 +13,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { publico } from '../comun/api';
+import { Atras } from '../comun/Atras';
 import { BotonTema } from '../comun/BotonTema';
 import { avisoError, avisoExito } from '../comun/avisos';
 
@@ -63,6 +64,9 @@ export function RecuperarClave() {
           ponerlo, y aqui no se mueve con el formulario. */}
       <div className="fixed right-4 top-4 z-20"><BotonTema /></div>
       <div className="vidrio w-full max-w-md p-8">
+        <div className="mb-4">
+          <Atras destino="/login" />
+        </div>
         <h1 className="text-2xl font-semibold tracking-tight">Recuperar contraseña</h1>
         <p className="mb-6 text-sm text-tinta-suave">
           {paso === 1

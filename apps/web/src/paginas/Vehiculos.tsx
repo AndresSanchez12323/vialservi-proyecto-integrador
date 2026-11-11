@@ -130,6 +130,7 @@ export function Vehiculos() {
   const navegar = useNavigate();
   const rol = sesion.rol();
   const esCliente = rol === 'CLIENTE';
+  const puedeEliminar = esCliente || rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
   const [placa, setPlaca] = useState('');
   const [registrando, setRegistrando] = useState(false);
 
@@ -178,21 +179,21 @@ export function Vehiculos() {
     onError: (e) => avisoError(e, 'No se pudo agregar el vehiculo'),
   });
 
-  /** Borrar no se deshace: se pregunta antes y el foco arranca en Cancelar. */
+  /** Confirmar el archivado conservando el historial. */
   const eliminarVehiculo = useMutation({
-    mutationFn: (id: number) => enviar(`/vehiculos/${id}`, 'DELETE'),
+    mutationFn: (id: number) => enviar(`/vehiculos/${id}/archivar`, 'PATCH'),
     onSuccess: () => {
-      avisoExito('El vehiculo se quito de su cuenta.', 'Vehiculo eliminado');
+      avisoExito('El vehículo se archivó y conserva su historial.', 'Vehículo archivado');
       refrescar();
     },
-    onError: (e) => avisoError(e, 'No se pudo eliminar'),
+    onError: (e) => avisoError(e, 'No se pudo archivar'),
   });
 
   const pedirEliminar = async (v: Vehiculo) => {
     const seguro = await confirmar({
-      titulo: `¿Eliminar ${v.placa}?`,
-      texto: `${v.marca} ${v.modelo}. Esta accion no se puede deshacer, y solo es posible si el vehiculo no tiene expedientes ni servicios abiertos.`,
-      confirmar: 'Si, eliminar',
+      titulo: `¿Archivar ${v.placa}?`,
+      texto: `${v.marca} ${v.modelo}. Se conserva su historial. Solo es posible si no tiene expedientes ni servicios abiertos.`,
+      confirmar: 'Sí, archivar',
     });
     if (seguro) eliminarVehiculo.mutate(v.id);
   };
@@ -285,21 +286,21 @@ export function Vehiculos() {
             <p className="mt-1 text-sm">{v.marca} {v.modelo}</p>
             <p className="text-sm text-tinta-tenue">Color {v.color.toLowerCase()}</p>
 
-            {esCliente ? (
+            {puedeEliminar ? (
               <div className="mt-3 space-y-2">
-                <button
+                {esCliente && <button
                   className="boton-suave w-full"
                   onClick={() => navegar(`/servicios?vehiculoId=${v.id}`)}
                   title="Ir al formulario de solicitud"
                 >
                   Solicitar servicio →
-                </button>
+                </button>}
                 <button
                   className="w-full rounded-lg border border-riesgo/30 px-3 py-2 text-sm text-riesgo transition hover:bg-riesgo-fondo/10 disabled:opacity-50"
                   disabled={eliminarVehiculo.isPending}
                   onClick={() => pedirEliminar(v)}
                 >
-                  {eliminarVehiculo.isPending ? 'Eliminando…' : 'Eliminar vehículo'}
+                  {eliminarVehiculo.isPending ? 'Archivando…' : 'Archivar vehículo'}
                 </button>
               </div>
             ) : (

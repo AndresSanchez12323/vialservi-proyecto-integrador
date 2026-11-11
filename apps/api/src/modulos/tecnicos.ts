@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { EstadoServicio } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import { EstadoServicio, Rol, TipoVerificacionCorreo } from '@prisma/client';
 import { prisma } from '../prisma.js';
-import { autenticar, exigirRol } from '../auth.js';
+import { autenticar, crearVerificacion, exigirRol, validarVerificacion, verificarCorreoDisponible } from '../auth.js';
 import { distanciaRecorridoKm, estimarMinutos, puntoDe } from '../geo.js';
+import { CERRADOS } from '../estado.js';
 
 const tecnico = z.object({
   documento: z.string().min(5),
@@ -13,6 +15,8 @@ const tecnico = z.object({
   licencia: z.string().optional(),
   disponible: z.boolean().optional(),
 });
+const tecnicoConCorreo = tecnico.extend({ correo: z.string().email() });
+const claveInicial = () => `Vial${Math.random().toString(36).slice(2, 8).toUpperCase()}!`;
 
 export const rutasTecnicos = Router();
 rutasTecnicos.use(autenticar);
@@ -42,6 +46,7 @@ const resumir = ({ servicios, ...resto }: FichaTecnico) => ({
 
 rutasTecnicos.get('/', async (_req, res) => {
   const lista = await prisma.tecnico.findMany({
+    where: { archivadoEn: null },
     orderBy: { nombre: 'asc' },
     include: fichaCompleta,
   });
@@ -62,6 +67,7 @@ rutasTecnicos.get('/', async (_req, res) => {
  */
 rutasTecnicos.get('/tablero', exigirRol('CENTRAL', 'ADMINISTRADOR'), async (req, res) => {
   const servicioId = req.query.servicioId ? Number(req.query.servicioId) : null;
+  const tipoSolicitado = typeof req.query.tipo === 'string' ? req.query.tipo : null;
 
   const servicio = servicioId
     ? await prisma.servicio.findUnique({
@@ -77,11 +83,12 @@ rutasTecnicos.get('/tablero', exigirRol('CENTRAL', 'ADMINISTRADOR'), async (req,
   // El tipo definitivo si ya se clasifico; si no, lo que pidio el cliente,
   // para poder resaltar quien tiene la especialidad que probablemente hara
   // falta.
-  const tipo = servicio?.tipo ?? servicio?.tipoSolicitado ?? null;
+  const tipo = tipoSolicitado ?? servicio?.tipo ?? servicio?.tipoSolicitado ?? null;
   const requerida =
     tipo === 'GRUA' ? 'GRUA' : tipo === 'CONDUCTOR_ELEGIDO' ? 'CONDUCTOR' : tipo ? 'MECANICA' : null;
 
   const lista = await prisma.tecnico.findMany({
+    where: requerida ? { archivadoEn: null, especialidades: { contains: requerida } } : { archivadoEn: null },
     orderBy: { nombre: 'asc' },
     include: fichaCompleta,
   });
@@ -121,6 +128,7 @@ rutasTecnicos.get('/yo', exigirRol('TECNICO', 'ADMINISTRADOR'), async (req, res)
     include: fichaCompleta,
   });
   if (!propio) return res.status(404).json({ error: 'Su usuario no tiene ficha de técnico' });
+  if (propio.archivadoEn) return res.status(409).json({ error: 'Su ficha de técnico está archivada' });
   res.json(resumir(propio));
 });
 
@@ -132,6 +140,7 @@ rutasTecnicos.patch('/yo/disponibilidad', exigirRol('TECNICO', 'ADMINISTRADOR'),
 
   const propio = await prisma.tecnico.findUnique({ where: { usuarioId: req.sesion!.id } });
   if (!propio) return res.status(404).json({ error: 'Su usuario no tiene ficha de técnico' });
+  if (propio.archivadoEn) return res.status(409).json({ error: 'Su ficha de técnico está archivada' });
 
   res.json(await prisma.tecnico.update({
     where: { id: propio.id },
@@ -157,6 +166,7 @@ rutasTecnicos.patch('/yo/ubicacion', exigirRol('TECNICO', 'ADMINISTRADOR'), asyn
 
   const propio = await prisma.tecnico.findUnique({ where: { usuarioId: req.sesion!.id } });
   if (!propio) return res.status(404).json({ error: 'Su usuario no tiene ficha de técnico' });
+  if (propio.archivadoEn) return res.status(409).json({ error: 'Su ficha de técnico está archivada' });
 
   res.json(
     await prisma.tecnico.update({
@@ -166,19 +176,130 @@ rutasTecnicos.patch('/yo/ubicacion', exigirRol('TECNICO', 'ADMINISTRADOR'), asyn
   );
 });
 
-rutasTecnicos.post('/', exigirRol('ADMINISTRADOR'), async (req, res) => {
-  const datos = tecnico.safeParse(req.body);
+rutasTecnicos.post('/iniciar', exigirRol('ADMINISTRADOR'), verificarCorreoDisponible, async (req, res) => {
+  const datos = tecnicoConCorreo.safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
 
   const repetido = await prisma.tecnico.findUnique({ where: { documento: datos.data.documento } });
   if (repetido) return res.status(409).json({ error: 'Ya existe un tecnico con ese documento' });
+  const usuarioRepetido = await prisma.usuario.findFirst({
+    where: { OR: [{ documento: datos.data.documento }, { correo: datos.data.correo.toLowerCase() }] },
+  });
+  if (usuarioRepetido) return res.status(409).json({ error: 'El documento o correo ya tiene una cuenta' });
 
-  const creado = await prisma.tecnico.create({ data: datos.data });
-  res.status(201).json(creado);
+  const verificacion = await crearVerificacion({
+    tipo: TipoVerificacionCorreo.REGISTRO_TECNICO,
+    correo: datos.data.correo.toLowerCase(),
+    nombre: datos.data.nombre,
+    datos: { ...datos.data, correo: datos.data.correo.toLowerCase() },
+  });
+  res.status(202).json({ verificacionId: verificacion.id, ...(verificacion.codigo ? { codigo: verificacion.codigo } : {}) });
+});
+
+rutasTecnicos.post('/confirmar', exigirRol('ADMINISTRADOR'), async (req, res) => {
+  const datos = z.object({ verificacionId: z.string().min(1), codigo: z.string().length(6) }).safeParse(req.body);
+  if (!datos.success) return res.status(400).json({ error: 'Código inválido' });
+  let pendiente;
+  try {
+    pendiente = await validarVerificacion(datos.data.verificacionId, datos.data.codigo, TipoVerificacionCorreo.REGISTRO_TECNICO);
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Código inválido' });
+  }
+  const registro = JSON.parse(pendiente.datos) as z.infer<typeof tecnicoConCorreo>;
+  const claveInicialTexto = claveInicial();
+  const creado = await prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.create({
+      data: {
+        documento: registro.documento,
+        nombre: registro.nombre,
+        correo: registro.correo,
+        clave: await bcrypt.hash(claveInicialTexto, 10),
+        rol: Rol.TECNICO,
+      },
+    });
+    const ficha = await tx.tecnico.create({
+      data: {
+        documento: registro.documento,
+        nombre: registro.nombre,
+        telefono: registro.telefono,
+        especialidades: registro.especialidades,
+        licencia: registro.licencia,
+        disponible: registro.disponible,
+        usuarioId: usuario.id,
+      },
+    });
+    await tx.verificacionCorreo.update({ where: { id: pendiente!.id }, data: { usadoEn: new Date() } });
+    return ficha;
+  });
+  res.status(201).json({
+    tecnico: creado,
+    credenciales: { usuario: registro.documento, contraseñaInicial: claveInicialTexto, correo: registro.correo },
+  });
 });
 
 rutasTecnicos.put('/:id', exigirRol('ADMINISTRADOR'), async (req, res) => {
   const datos = tecnico.partial().safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
-  res.json(await prisma.tecnico.update({ where: { id: Number(req.params.id) }, data: datos.data }));
+  const existente = await prisma.tecnico.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { usuario: true },
+  });
+  if (!existente) return res.status(404).json({ error: 'Tecnico no encontrado' });
+  if (datos.data.documento && datos.data.documento !== existente.documento) {
+    const [repetidoTecnico, repetidoUsuario] = await Promise.all([
+      prisma.tecnico.findUnique({ where: { documento: datos.data.documento } }),
+      prisma.usuario.findUnique({ where: { documento: datos.data.documento } }),
+    ]);
+    if (repetidoTecnico || repetidoUsuario) {
+      return res.status(409).json({ error: 'Ya existe un tecnico o usuario con ese documento' });
+    }
+  }
+  const actualizado = await prisma.$transaction(async (tx) => {
+    const ficha = await tx.tecnico.update({ where: { id: existente.id }, data: datos.data });
+    if (existente.usuarioId && existente.usuario) {
+      await tx.usuario.update({
+        where: { id: existente.usuarioId },
+        data: {
+          ...(datos.data.documento !== undefined ? { documento: datos.data.documento } : {}),
+          ...(datos.data.nombre !== undefined ? { nombre: datos.data.nombre } : {}),
+        },
+      });
+    }
+    return ficha;
+  });
+  res.json(actualizado);
+});
+
+/**
+ * Archivar no borra la ficha ni sus servicios: solo la saca de la operación.
+ * Un técnico con trabajo activo o expediente sin cerrar no puede archivarse.
+ */
+rutasTecnicos.patch('/:id/archivar', exigirRol('ADMINISTRADOR'), async (req, res) => {
+  const id = Number(req.params.id);
+  const existente = await prisma.tecnico.findUnique({
+    where: { id },
+    include: { servicios: { select: { estado: true, expediente: { select: { cerradoEn: true } } } } },
+  });
+  if (!existente) return res.status(404).json({ error: 'Tecnico no encontrado' });
+  const tieneTrabajoAbierto = existente.servicios.some(
+    (servicio) => !CERRADOS.includes(servicio.estado)
+      || (servicio.expediente && !servicio.expediente.cerradoEn),
+  );
+  if (tieneTrabajoAbierto) {
+    return res.status(409).json({ error: 'No puede archivar el técnico porque tiene un expediente o servicio abierto' });
+  }
+  const archivado = await prisma.tecnico.update({
+    where: { id },
+    data: { archivadoEn: new Date(), disponible: false },
+  });
+  res.json(archivado);
+});
+
+rutasTecnicos.patch('/:id/reactivar', exigirRol('ADMINISTRADOR'), async (req, res) => {
+  const actualizado = await prisma.tecnico.updateMany({
+    where: { id: Number(req.params.id), archivadoEn: { not: null } },
+    data: { archivadoEn: null, disponible: true },
+  });
+  if (actualizado.count === 0) return res.status(404).json({ error: 'Tecnico archivado no encontrado' });
+  res.json(await prisma.tecnico.findUniqueOrThrow({ where: { id: Number(req.params.id) } }));
 });

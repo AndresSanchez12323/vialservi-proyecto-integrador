@@ -446,3 +446,16 @@ Si no pueden usar Docker, sirve cualquier PostgreSQL 16: basta apuntar
 
 En local, `ALMACENAMIENTO_MODO=local` y `CORREO_MODO=consola`, así que **no hace
 falta cuenta de AWS para desarrollar ni para la demostración**.
+
+
+## Verificación de cuentas en Lambda (noviembre de 2026)
+
+Para redesplegar use `infra/desplegar-serverless.ps1` y consulte
+`docs/migracion-serverless.md`; los comandos ECS anteriores son históricos.
+
+El modo consola no entrega códigos al usuario. En producción se conserva el
+arranque de la API y las operaciones existentes; iniciar una verificación
+de registro, alta de técnico o cambio de clave devuelve 503 hasta configurar
+SMTP o SES. Antes de habilitar el registro, configure el proveedor mediante
+los parámetros de la pila Lambda y SSM existentes y pruebe la entrega real
+a un correo autorizado. No exponga claves SMTP ni códigos en respuestas HTTP.

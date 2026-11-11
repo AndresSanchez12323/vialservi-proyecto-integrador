@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { sesion } from './api';
+import { useState } from 'react';
+import { enviar, sesion } from './api';
 import { Atras } from './Atras';
 import { BotonTema } from './BotonTema';
 import { Logo } from './Logo';
@@ -29,6 +30,35 @@ export function Disposicion() {
   // Técnico y cliente no tienen tablero, así que lo conservan.
   const conTablero = rol === 'ADMINISTRADOR' || rol === 'CENTRAL';
   const visibles = MODULOS.filter((m) => m.roles.includes(rol));
+  const [claveAbierta, setClaveAbierta] = useState(false);
+  const [verificacionId, setVerificacionId] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [nueva, setNueva] = useState('');
+  const [mensaje, setMensaje] = useState('');
+  const [errorClave, setErrorClave] = useState('');
+
+  const solicitarCodigo = async () => {
+    try {
+      setErrorClave('');
+      const r = await enviar<{ verificacionId: string }>('/auth/clave/iniciar', 'POST');
+      setVerificacionId(r.verificacionId);
+      setMensaje('Código enviado al correo registrado.');
+    } catch (error) {
+      setErrorClave(error instanceof Error ? error.message : 'No se pudo enviar el código.');
+    }
+  };
+  const cambiarClave = async () => {
+    try {
+      setErrorClave('');
+      await enviar('/auth/clave/confirmar', 'POST', { verificacionId, codigo, nueva });
+      setMensaje('Contraseña actualizada correctamente.');
+      setVerificacionId('');
+      setCodigo('');
+      setNueva('');
+    } catch (error) {
+      setErrorClave(error instanceof Error ? error.message : 'No se pudo cambiar la contraseña.');
+    }
+  };
 
   const salir = () => {
     sesion.cerrar();
@@ -64,11 +94,38 @@ export function Disposicion() {
             <div className="min-w-0 text-right">
               <p className="truncate text-sm font-medium">{usuario?.nombre}</p>
               <p className="truncate text-xs text-marca">{ROLES[rol] ?? rol}</p>
+            <button className="text-xs text-slate-400 underline hover:text-amber-200" onClick={() => { setClaveAbierta(true); setMensaje(''); setErrorClave(''); }}>
+              Cambiar contraseña
+            </button>
             </div>
             <button onClick={salir} className="boton-suave shrink-0">Salir</button>
           </div>
         </div>
       </header>
+
+      {claveAbierta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm">
+          <section className="vidrio w-full max-w-md space-y-3 p-6">
+            <h2 className="text-lg font-semibold">Cambiar contraseña</h2>
+            {!verificacionId ? (
+              <button className="boton" onClick={solicitarCodigo}>Enviar código al correo</button>
+            ) : (
+              <>
+                <input className="campo text-center font-mono tracking-widest" placeholder="Código de 6 dígitos"
+                  value={codigo} onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))} maxLength={6} />
+                <input className="campo" type="password" placeholder="Nueva contraseña (mínimo 8 caracteres)"
+                  value={nueva} onChange={(e) => setNueva(e.target.value)} />
+                <button className="boton" disabled={codigo.length !== 6 || nueva.length < 8} onClick={cambiarClave}>
+                  Confirmar cambio
+                </button>
+              </>
+            )}
+            {mensaje && <p className="text-sm text-emerald-300">{mensaje}</p>}
+            {errorClave && <p className="text-sm text-rose-300">{errorClave}</p>}
+            <button className="boton-suave" onClick={() => setClaveAbierta(false)}>Cerrar</button>
+          </section>
+        </div>
+      )}
 
       <div className="flex flex-col gap-6 lg:flex-row">
         {!conTablero && (

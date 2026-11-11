@@ -161,6 +161,7 @@ export type ServicioResumen = {
 
 export type Vehiculo = {
   id: number; placa: string; marca: string; modelo: string; color: string;
+  archivadoEn?: string | null;
   linea?: string | null; clase?: string | null;
   chasis?: string | null; motor?: string | null;
   propietarioNombre?: string | null; propietarioDocumento?: string | null;
@@ -171,6 +172,7 @@ export type Vehiculo = {
 export type Tecnico = {
   id: number; documento: string; nombre: string; telefono: string;
   especialidades: string; licencia?: string | null; disponible: boolean;
+  archivadoEn?: string | null;
   lat?: number | null; lng?: number | null; ubicacionEn?: string | null;
   _count?: { servicios: number };
   activos?: number;

@@ -169,6 +169,7 @@ rutasServicios.post('/', exigirRol('CENTRAL', 'ADMINISTRADOR', 'CLIENTE'), async
   // consulta por placa, y un cruce equivocado lo dañaria de raiz.
   const vehiculo = await prisma.vehiculo.findUnique({ where: { id: datos.data.vehiculoId } });
   if (!vehiculo) return res.status(404).json({ error: 'Vehiculo no encontrado' });
+  if (vehiculo.archivadoEn) return res.status(409).json({ error: 'El vehiculo está archivado y no admite nuevos servicios' });
   if (vehiculo.clienteId !== clienteId) {
     return res.status(409).json({ error: 'El vehiculo no pertenece a ese cliente' });
   }
@@ -234,7 +235,7 @@ rutasServicios.patch('/:id/clasificar', exigirRol('CENTRAL', 'ADMINISTRADOR'), a
   }
 
   const tecnico = await prisma.tecnico.findUnique({ where: { id: datos.data.tecnicoId } });
-  if (!tecnico) return res.status(404).json({ error: 'Tecnico no encontrado' });
+  if (!tecnico || tecnico.archivadoEn) return res.status(404).json({ error: 'Tecnico no disponible' });
 
   // La hoja de vida manda: no se le asigna una grua a quien no esta
   // habilitado para operarla, aunque la central se equivoque en la pantalla.
@@ -315,6 +316,79 @@ rutasServicios.patch('/:id/clasificar', exigirRol('CENTRAL', 'ADMINISTRADOR'), a
   ]);
 
   res.json(resultado ? conSeguimiento(resultado) : null);
+});
+
+/** Reasignar conserva el servicio y su expediente: solo cambia el técnico
+ * responsable mientras aún no ha iniciado la atención en sitio. */
+rutasServicios.patch('/:id/reasignar', exigirRol('CENTRAL', 'ADMINISTRADOR'), async (req, res) => {
+  const datos = z.object({ tecnicoId: z.coerce.number().int().positive() }).safeParse(req.body);
+  if (!datos.success) return res.status(400).json({ error: 'Falta el técnico' });
+
+  const id = Number(req.params.id);
+  const servicio = await prisma.servicio.findUnique({
+    where: { id },
+    include: { tecnico: true, cliente: true, vehiculo: true, expediente: true },
+  });
+  if (!servicio) return res.status(404).json({ error: 'Servicio no encontrado' });
+  if (estaCerrado(servicio.estado) || servicio.iniciadoEn || servicio.expediente?.verificadoEn) {
+    return res.status(409).json({ error: 'No se puede reasignar después de iniciar la atención' });
+  }
+  if (!servicio.asignadoEn || !servicio.tipo) {
+    return res.status(409).json({ error: 'El servicio todavía no está asignado' });
+  }
+
+  const tecnico = await prisma.tecnico.findUnique({ where: { id: datos.data.tecnicoId } });
+  if (!tecnico || tecnico.archivadoEn) return res.status(404).json({ error: 'Técnico no disponible' });
+  const requerida = servicio.tipo === 'GRUA' ? 'GRUA'
+    : servicio.tipo === 'CONDUCTOR_ELEGIDO' ? 'CONDUCTOR' : 'MECANICA';
+  if (!tecnico.especialidades.includes(requerida)) {
+    return res.status(409).json({ error: `${tecnico.nombre} no tiene la especialidad ${requerida}` });
+  }
+  const trabajoActivo = await prisma.servicio.findFirst({
+    where: { id: { not: id }, tecnicoId: tecnico.id, estado: { in: ['ASIGNADO', 'EN_EJECUCION'] } },
+    select: { id: true },
+  });
+  if (trabajoActivo) return res.status(409).json({ error: `El técnico ya tiene el servicio #${trabajoActivo.id} en curso` });
+
+  const anteriorId = servicio.tecnicoId;
+  const actualizado = await prisma.$transaction(async (tx) => {
+    await tx.servicio.update({
+      where: { id },
+      data: {
+        tecnicoId: tecnico.id,
+        asignadoEn: new Date(),
+        asignadoPor: req.sesion!.id,
+        etaMinutos: null,
+        etaActualizadoEn: null,
+      },
+    });
+    return tx.servicio.findUnique({ where: { id }, include: incluir });
+  });
+
+  await Promise.all([
+    avisar(await usuarioDelTecnico(anteriorId), {
+      tipo: 'SERVICIO_REASIGNADO',
+      titulo: 'Servicio reasignado',
+      mensaje: `El servicio de ${servicio.vehiculo.placa} fue reasignado a otro técnico.`,
+      servicioId: id,
+      expedienteId: servicio.expediente?.id,
+    }),
+    avisar(await usuarioDelTecnico(tecnico.id), {
+      tipo: 'SERVICIO_ASIGNADO',
+      titulo: 'Le asignaron un servicio',
+      mensaje: `${servicio.vehiculo.placa} · ${servicio.direccion}. ${servicio.descripcion}`,
+      servicioId: id,
+      expedienteId: servicio.expediente?.id,
+    }),
+    avisar(await usuarioDelCliente(servicio.clienteId), {
+      tipo: 'SERVICIO_ASIGNADO',
+      titulo: 'Su servicio fue reasignado',
+      mensaje: `El servicio de ${servicio.vehiculo.placa} será atendido por ${tecnico.nombre}.`,
+      servicioId: id,
+      expedienteId: servicio.expediente?.id,
+    }),
+  ]);
+  res.json(actualizado ? conSeguimiento(actualizado) : null);
 });
 
 /**
@@ -494,9 +568,9 @@ rutasServicios.patch('/:id/eta', exigirRol('TECNICO', 'ADMINISTRADOR'), async (r
   res.json(actualizado ? conSeguimiento(actualizado) : null);
 });
 
-/** Cancelar exige motivo: un servicio que desaparece sin explicacion es
- *  justamente el hueco de trazabilidad que el sistema quiere evitar. */
-rutasServicios.patch('/:id/cancelar', exigirRol('CENTRAL', 'ADMINISTRADOR'), async (req, res) => {
+/** Cancelar exige motivo y conserva el registro. El cliente puede hacerlo
+ * antes de que el tecnico llegue e inicie la atencion del expediente. */
+rutasServicios.patch('/:id/cancelar', exigirRol('CENTRAL', 'ADMINISTRADOR', 'CLIENTE'), async (req, res) => {
   const motivo = z.string().min(5).safeParse(req.body?.motivo);
   if (!motivo.success) return res.status(400).json({ error: 'La cancelacion exige un motivo' });
 
@@ -506,8 +580,16 @@ rutasServicios.patch('/:id/cancelar', exigirRol('CENTRAL', 'ADMINISTRADOR'), asy
     include: { vehiculo: true, expediente: true },
   });
   if (!servicio) return res.status(404).json({ error: 'Servicio no encontrado' });
-  if (servicio.estado === 'CERRADO') {
-    return res.status(409).json({ error: 'Un servicio cerrado no se puede cancelar' });
+  if (!(await puedeVer(req.sesion!, servicio))) {
+    return res.status(403).json({ error: 'No tiene permiso para cancelar este servicio' });
+  }
+  if (servicio.estado === 'CERRADO' || servicio.estado === 'CANCELADO' || servicio.estado === 'RECHAZADO') {
+    return res.status(409).json({ error: 'El servicio ya está cerrado, cancelado o rechazado' });
+  }
+  if (servicio.iniciadoEn) {
+    return res.status(409).json({
+      error: 'El cliente ya no puede cancelar porque el técnico llegó e inició la atención del expediente',
+    });
   }
 
   await prisma.servicio.update({
@@ -521,16 +603,24 @@ rutasServicios.patch('/:id/cancelar', exigirRol('CENTRAL', 'ADMINISTRADOR'), asy
   await recalcularEstado(id);
 
   await Promise.all([
-    avisar(await usuarioDelCliente(servicio.clienteId), {
-      tipo: 'SERVICIO_CANCELADO',
-      titulo: 'Su servicio fue cancelado',
-      mensaje: `Servicio de ${servicio.vehiculo.placa} cancelado. Motivo: ${motivo.data}`,
-      servicioId: id,
-    }),
+    ...(req.sesion!.rol === 'CLIENTE'
+      ? []
+      : [avisar(await usuarioDelCliente(servicio.clienteId), {
+          tipo: 'SERVICIO_CANCELADO' as const,
+          titulo: 'Su servicio fue cancelado',
+          mensaje: `Servicio de ${servicio.vehiculo.placa} cancelado. Motivo: ${motivo.data}`,
+          servicioId: id,
+        })]),
     avisar(await usuarioDelTecnico(servicio.tecnicoId), {
       tipo: 'SERVICIO_CANCELADO',
       titulo: 'Un servicio suyo fue cancelado',
       mensaje: `${servicio.vehiculo.placa}: ${motivo.data}. No se desplace.`,
+      servicioId: id,
+    }),
+    avisar(await usuariosCentral(), {
+      tipo: 'SERVICIO_CANCELADO',
+      titulo: 'El cliente canceló un servicio',
+      mensaje: `${servicio.vehiculo.placa}: ${motivo.data}`,
       servicioId: id,
     }),
   ]);

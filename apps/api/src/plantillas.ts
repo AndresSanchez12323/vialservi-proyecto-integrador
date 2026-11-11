@@ -184,3 +184,31 @@ export const correoRecuperacion = (
 
   return { asunto, texto, html };
 };
+
+export const correoVerificacion = (
+  nombre: string,
+  codigo: string,
+  minutos: number,
+): Plantilla => {
+  const asunto = `Código de verificación de VialServi: ${codigo}`;
+  const texto =
+    `Hola ${nombre},\n\n` +
+    `Su código de verificación de VialServi es:\n\n    ${codigo}\n\n` +
+    `Vence en ${minutos} minutos y solo se puede usar una vez.\n\n` +
+    `Si no solicitó esta operación, ignore este mensaje.\n\n— VialServi`;
+  const html = envoltura(
+    `<tr><td style="padding:32px;">
+      <div style="font-family:${FUENTE};font-size:16px;color:${TEXTO};line-height:24px;">
+        Hola <strong>${escapar(nombre)}</strong>, use este código para verificar su correo:
+      </div>
+      <div style="margin-top:20px;text-align:center;background-color:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:22px 16px;font-family:Consolas,monospace;font-size:38px;font-weight:700;letter-spacing:10px;color:#92400e;">
+        ${escapar(codigo)}
+      </div>
+      <div style="font-family:${FUENTE};font-size:14px;color:${SUAVE};line-height:22px;padding-top:16px;">
+        Vence en ${minutos} minutos y solo se puede usar una vez.
+      </div>
+    </td></tr>`,
+    `Su código de verificación es ${codigo}.`,
+  );
+  return { asunto, texto, html };
+};
