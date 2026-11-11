@@ -5,18 +5,18 @@ import { autenticar, exigirRol } from '../auth.js';
 import { CERRADOS } from '../estado.js';
 import { randomUUID } from 'node:crypto';
 import { eliminarObjeto, urlDeSubidaTarjeta } from '../almacenamiento.js';
-import { analizarTarjeta, type CaraTarjeta } from '../ocr.js';
+import { analizarTarjeta } from '../ocr.js';
 
 // Datos del documento del vehiculo. Al cliente no se le PIDEN en el
-// formulario: los identificadores de la licencia de transito (VIN, chasis,
-// motor) los toma el tecnico en sitio con el documento en la mano, al
-// verificar el expediente. Pedirlos al registrar solo lograria que el cliente
-// los dejara vacios o los inventara.
+// formulario: chasis y motor los toma el tecnico en sitio con el documento en
+// la mano, al verificar el expediente.
+//
+// El VIN y el numero de la licencia de transito NO se recogen (decision del
+// equipo, nov. 2026): no estan en el esquema, asi que si una peticion los trae
+// zod los descarta y nunca llegan a la base.
 const documentos = z.object({
   linea: z.string().optional(),
   clase: z.string().optional(),
-  licenciaTransito: z.string().optional(),
-  vin: z.string().optional(),
   chasis: z.string().optional(),
   motor: z.string().optional(),
   propietarioNombre: z.string().optional(),
@@ -58,7 +58,7 @@ rutasVehiculos.use(autenticar);
 // El TECNICO tambien lee la tarjeta, y no es un permiso de adorno: si el
 // cliente registro el vehiculo sin los datos del documento —que es lo normal,
 // porque no se los pedimos—, quien tiene la licencia de transito en la mano es
-// el tecnico en el sitio. Sin esto tendria que teclear el VIN a ojo.
+// el tecnico en el sitio. Sin esto tendria que teclear los datos a ojo.
 const LEEN_TARJETA = ['ADMINISTRADOR', 'CENTRAL', 'CLIENTE', 'TECNICO'] as const;
 
 rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol(...LEEN_TARJETA), async (_req, res) => {
@@ -70,11 +70,10 @@ rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol(...LEEN_TARJETA), async 
 rutasVehiculos.post('/leer-tarjeta/analizar', exigirRol(...LEEN_TARJETA), async (req, res) => {
   const clave = typeof req.body?.clave === 'string' ? req.body.clave : '';
   if (!clave) return res.status(400).json({ error: 'Falta la imagen de la tarjeta.' });
-  // Por omision el frente: es la cara que trae los datos del vehiculo y la
-  // unica que se leia antes de que existiera el paso del reverso.
-  const cara: CaraTarjeta = req.body?.cara === 'reverso' ? 'reverso' : 'frente';
+  // Solo se lee el frente: trae los datos del vehiculo y tambien al
+  // propietario. Un campo `cara` de clientes viejos se ignora.
   try {
-    res.json(await analizarTarjeta(clave, cara));
+    res.json(await analizarTarjeta(clave));
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : 'No se pudo leer la tarjeta.';
     res.status(422).json({ error: mensaje });

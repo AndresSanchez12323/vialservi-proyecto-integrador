@@ -348,6 +348,14 @@ Resources:
             Status: Enabled
             Transitions:
               - { StorageClass: STANDARD_IA, TransitionInDays: 730 }
+          # Fotos de la licencia para el OCR: datos personales que no son
+          # evidencia. El API las borra al leerlas; esta regla elimina en un
+          # dia cualquier resto (subida abandonada o version anterior).
+          - Id: ocr-tarjetas-un-dia
+            Status: Enabled
+            Prefix: ocr-tarjetas/
+            ExpirationInDays: 1
+            NoncurrentVersionExpiration: { NoncurrentDays: 1 }
       Tags: [{ Key: Name, Value: !Sub '${Proyecto}-evidencias' }]
 
   BucketWeb:

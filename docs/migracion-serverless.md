@@ -163,3 +163,19 @@ Respaldos conservados (generan costo de almacenamiento):
 La auditoria de dependencias sigue reportando avisos heredados (incluido
 Nodemailer y herramientas de desarrollo). No se aplico `npm audit fix --force`
 ni se afirma que esta migracion resuelva toda la seguridad del proyecto.
+
+## Remontaje del 9 de noviembre de 2026
+
+El 7 de noviembre una limpieza de la cuenta borró por error las tres pilas,
+los buckets, el repositorio ECR y las copias de Aurora. El 9 de noviembre se
+volvió a montar todo desde `main` con las mismas plantillas:
+
+- Nueva URL: https://dtzoq2c228pp1.cloudfront.net (la anterior no se recupera).
+- Base restaurada del volcado `migracion-aurora/20261010-final.dump` por Data
+  API en una sola transaccion; 12 tablas y 12 secuencias verificadas por huella.
+  Lo escrito entre el 10 de octubre y el 7 de noviembre se perdio.
+- Evidencias y volcados devueltos al bucket desde la copia local.
+- `JWT_SECRET` nuevo (las sesiones anteriores dejan de valer). El correo quedo
+  en modo consola hasta configurar de nuevo SMTP o SES: la clave SMTP no se
+  conservaba en ningun lado.
+- `lambda.yml` apunta `CORS_ORIGIN` a la nueva URL.

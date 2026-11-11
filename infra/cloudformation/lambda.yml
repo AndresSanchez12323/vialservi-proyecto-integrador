@@ -61,11 +61,18 @@ Resources:
               # descarta al terminar. El permiso se limita a ese prefijo a
               # proposito: las evidencias del expediente son el soporte
               # probatorio del servicio y nada en el aplicativo las borra.
+              # Con DeleteObjectVersion la foto se borra de verdad: el bucket
+              # guarda versiones y borrar solo la clave la dejaba como version
+              # anterior.
+              # GetObjectVersion: Textract lee la version exacta de la foto
+              # con los permisos de esta funcion; sin el, la lectura falla.
               - Effect: Allow
-                Action: s3:DeleteObject
+                Action: [s3:GetObjectVersion, s3:DeleteObject, s3:DeleteObjectVersion]
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${BucketEvidencias}/ocr-tarjetas/*'
+              # Lectura del texto con su posicion; los campos se toman por
+              # columna en el codigo (apps/api/src/ocr.ts).
               - Effect: Allow
-                Action: textract:AnalyzeDocument
+                Action: textract:DetectDocumentText
                 Resource: '*'
               - Effect: Allow
                 Action: ses:SendEmail
@@ -108,7 +115,7 @@ Resources:
           SMTP_HOST: !Ref SmtpHost
           SMTP_PUERTO: !Ref SmtpPuerto
           SMTP_USUARIO: !Ref SmtpUsuario
-          CORS_ORIGIN: https://d30qod6v3z8d4e.cloudfront.net
+          CORS_ORIGIN: https://dtzoq2c228pp1.cloudfront.net
   Api:
     Type: AWS::ApiGatewayV2::Api
     Properties:
