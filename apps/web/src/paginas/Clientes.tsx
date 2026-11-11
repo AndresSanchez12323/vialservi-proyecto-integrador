@@ -15,6 +15,64 @@ const grupoDe = (estado: string) =>
 const contar = (servicios: ServicioResumen[] | undefined, grupo: string) =>
   (servicios ?? []).filter((s) => grupoDe(s.estado) === grupo).length;
 
+/** Los tres recuentos, con el color que cada uno pide cuando no es cero. */
+const RECUENTOS = [
+  { grupo: 'pendiente', titulo: 'Pendientes', clase: 'border border-marca/40 bg-marca-fondo/20 text-marca' },
+  { grupo: 'abierto', titulo: 'Abiertos', clase: 'border border-dato/40 bg-dato-fondo/15 text-dato' },
+  { grupo: 'cerrado', titulo: 'Cerrados', clase: 'border border-exito/40 bg-exito-fondo/15 text-exito' },
+] as const;
+
+const Recuento = ({
+  servicios,
+  grupo,
+  clase,
+}: {
+  servicios: ServicioResumen[] | undefined;
+  grupo: string;
+  clase: string;
+}) => {
+  const n = contar(servicios, grupo);
+  return <span className={`etiqueta ${n ? clase : 'bg-velo/5 text-tinta-sutil'}`}>{n}</span>;
+};
+
+/** Los servicios del cliente, que es lo que se despliega al pulsar su fila. */
+const Servicios = ({ servicios }: { servicios: ServicioResumen[] | undefined }) => {
+  if ((servicios?.length ?? 0) === 0) {
+    return <p className="text-sm text-tinta-sutil">Este cliente aún no tiene servicios.</p>;
+  }
+  return (
+    <ul className="space-y-2">
+      {servicios!.map((s) => (
+        <li
+          key={s.id}
+          className="vidrio-suave flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm"
+        >
+          <span className={`etiqueta ${ESTADOS[s.estado]?.clase ?? ''}`}>
+            {ESTADOS[s.estado]?.texto ?? s.estado}
+          </span>
+          <span className="font-mono text-marca">{s.vehiculo.placa}</span>
+          {(s.tipo || s.tipoSolicitado) && (
+            <span className="text-tinta-suave">
+              {s.tipo ? TIPOS[s.tipo] : `Solicitado: ${TIPOS[s.tipoSolicitado!] ?? s.tipoSolicitado}`}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 basis-48 truncate text-tinta-tenue">{s.direccion}</span>
+          <span className="text-xs text-tinta-sutil">{fecha(s.solicitadoEn)}</span>
+          {s.expediente && (
+            <Link
+              to={`/expedientes/${s.expediente.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="font-mono text-xs text-marca hover:underline"
+            >
+              {s.expediente.consecutivo}
+            </Link>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+};
+
 export function Clientes() {
   const [expandido, setExpandido] = useState<number | null>(null);
   const { data, isLoading, error } = useQuery({
@@ -26,18 +84,68 @@ export function Clientes() {
     <div className="space-y-4">
       <div>
         <h2 className="text-xl font-semibold">Gestionar cliente</h2>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-tinta-tenue">
           Dueño del vehículo y quien solicita el servicio. Pulse una fila para ver
           la situación en tiempo real de sus servicios.
         </p>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
-      {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
+      {isLoading && <p className="text-sm text-tinta-tenue">Cargando…</p>}
+      {error && <p className="text-sm text-riesgo">{(error as Error).message}</p>}
 
-      <div className="vidrio overflow-x-auto">
+      {/* ── Tarjetas: pantallas estrechas ───────────────────────────────────
+          Ocho columnas no entran en un telefono ni ajustando anchos, y
+          dejarlas desplazar en horizontal esconde la mitad de los datos tras
+          un gesto que nadie adivina. Los mismos datos, uno encima de otro. */}
+      <div className="space-y-3 lg:hidden">
+        {data?.map((c) => {
+          const abierto = expandido === c.id;
+          return (
+            <article key={c.id} className="vidrio min-w-0 p-4">
+              <button
+                type="button"
+                onClick={() => setExpandido(abierto ? null : c.id)}
+                className="flex w-full items-start justify-between gap-3 text-left"
+                aria-expanded={abierto}
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{c.nombre}</p>
+                  <p className="truncate font-mono text-xs text-tinta-tenue">
+                    CC {c.documento} · {c.telefono}
+                  </p>
+                </div>
+                <span className="shrink-0 text-tinta-sutil">{abierto ? '▲' : '▼'}</span>
+              </button>
+
+              <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-velo/10 pt-3 text-sm sm:grid-cols-4">
+                <div className="min-w-0">
+                  <dt className="text-xs text-tinta-tenue">Vehículos</dt>
+                  <dd className="font-mono text-marca">{c._count?.vehiculos ?? 0}</dd>
+                </div>
+                {RECUENTOS.map(({ grupo, titulo, clase }) => (
+                  <div key={grupo} className="min-w-0">
+                    <dt className="text-xs text-tinta-tenue">{titulo}</dt>
+                    <dd className="mt-0.5">
+                      <Recuento servicios={c.servicios} grupo={grupo} clase={clase} />
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              {abierto && (
+                <div className="mt-3 border-t border-velo/10 pt-3">
+                  <Servicios servicios={c.servicios} />
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      {/* ── Tabla: a partir de lg, donde las ocho columnas caben de verdad ── */}
+      <div className="vidrio hidden overflow-hidden lg:block">
         <table className="w-full text-left text-sm">
-          <thead className="bg-white/5 text-xs uppercase tracking-wide text-slate-400">
+          <thead className="bg-velo/5 text-xs uppercase tracking-wide text-tinta-tenue">
             <tr>
               <th className="px-5 py-3">Documento</th>
               <th className="px-5 py-3">Nombre</th>
@@ -56,63 +164,25 @@ export function Clientes() {
                 <Fragment key={c.id}>
                   <tr
                     onClick={() => setExpandido(abierto ? null : c.id)}
-                    className="cursor-pointer border-t border-white/10 transition hover:bg-white/5"
+                    className="cursor-pointer border-t border-velo/10 transition hover:bg-velo/5"
                     title="Ver servicios del cliente"
                   >
-                    <td className="px-5 py-3 font-mono text-slate-300">{c.documento}</td>
+                    <td className="px-5 py-3 font-mono text-tinta-suave">{c.documento}</td>
                     <td className="px-5 py-3">{c.nombre}</td>
-                    <td className="px-5 py-3 text-slate-300">{c.telefono}</td>
-                    <td className="px-5 py-3 text-amber-300">{c._count?.vehiculos ?? 0}</td>
-                    <td className="px-5 py-3">
-                      <span className={`etiqueta ${contar(c.servicios, 'pendiente') ? 'border border-amber-300/40 bg-amber-400/20 text-amber-200' : 'bg-white/5 text-slate-500'}`}>
-                        {contar(c.servicios, 'pendiente')}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`etiqueta ${contar(c.servicios, 'abierto') ? 'border border-sky-300/40 bg-sky-400/15 text-sky-200' : 'bg-white/5 text-slate-500'}`}>
-                        {contar(c.servicios, 'abierto')}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`etiqueta ${contar(c.servicios, 'cerrado') ? 'border border-emerald-300/40 bg-emerald-400/15 text-emerald-200' : 'bg-white/5 text-slate-500'}`}>
-                        {contar(c.servicios, 'cerrado')}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-slate-500">{abierto ? '▲' : '▼'}</td>
+                    <td className="px-5 py-3 text-tinta-suave">{c.telefono}</td>
+                    <td className="px-5 py-3 text-marca">{c._count?.vehiculos ?? 0}</td>
+                    {RECUENTOS.map(({ grupo, clase }) => (
+                      <td key={grupo} className="px-5 py-3">
+                        <Recuento servicios={c.servicios} grupo={grupo} clase={clase} />
+                      </td>
+                    ))}
+                    <td className="px-5 py-3 text-tinta-sutil">{abierto ? '▲' : '▼'}</td>
                   </tr>
 
                   {abierto && (
-                    <tr key={`${c.id}-detalle`} className="border-t border-white/5 bg-black/20">
+                    <tr className="border-t border-velo/5 bg-velo/[0.06]">
                       <td colSpan={8} className="px-5 py-4">
-                        {(c.servicios?.length ?? 0) === 0 && (
-                          <p className="text-sm text-slate-500">Este cliente aún no tiene servicios.</p>
-                        )}
-                        <ul className="space-y-2">
-                          {c.servicios?.map((s) => (
-                            <li key={s.id} className="vidrio-suave flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
-                              <span className={`etiqueta ${ESTADOS[s.estado]?.clase ?? ''}`}>
-                                {ESTADOS[s.estado]?.texto ?? s.estado}
-                              </span>
-                              <span className="font-mono text-amber-300">{s.vehiculo.placa}</span>
-                              {(s.tipo || s.tipoSolicitado) && (
-                                <span className="text-slate-300">
-                                  {s.tipo ? TIPOS[s.tipo] : `Solicitado: ${TIPOS[s.tipoSolicitado!] ?? s.tipoSolicitado}`}
-                                </span>
-                              )}
-                              <span className="min-w-0 flex-1 basis-48 truncate text-slate-400">{s.direccion}</span>
-                              <span className="text-xs text-slate-500">{fecha(s.solicitadoEn)}</span>
-                              {s.expediente && (
-                                <Link
-                                  to={`/expedientes/${s.expediente.id}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="font-mono text-xs text-amber-200 hover:underline"
-                                >
-                                  {s.expediente.consecutivo}
-                                </Link>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
+                        <Servicios servicios={c.servicios} />
                       </td>
                     </tr>
                   )}
@@ -122,6 +192,10 @@ export function Clientes() {
           </tbody>
         </table>
       </div>
+
+      {data?.length === 0 && !isLoading && (
+        <p className="vidrio p-6 text-sm text-tinta-tenue">Todavía no hay clientes registrados.</p>
+      )}
     </div>
   );
 }

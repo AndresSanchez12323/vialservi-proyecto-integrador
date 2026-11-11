@@ -52,6 +52,13 @@ const credenciales = z.object({
   clave: z.string().min(1),
 });
 
+export const verificarCorreoDisponible = (_req: Request, res: Response, next: NextFunction) => {
+  if (config.esProduccion && config.CORREO_MODO === 'consola') {
+    return res.status(503).json({ error: 'La verificación por correo no está disponible temporalmente.' });
+  }
+  next();
+};
+
 export const rutasAuth = Router();
 
 rutasAuth.post('/login', async (req, res) => {
@@ -86,7 +93,7 @@ const registro = z.object({
   clave,
 });
 
-rutasAuth.post('/registro/iniciar', async (req, res) => {
+rutasAuth.post('/registro/iniciar', verificarCorreoDisponible, async (req, res) => {
   const datos = registro.safeParse(req.body);
   if (!datos.success) {
     return res.status(400).json({ error: datos.error.issues[0]?.message ?? 'Datos invalidos' });
@@ -353,7 +360,7 @@ rutasAuth.post('/clave', autenticar, async (req, res) => {
   res.json({ ok: true, mensaje: 'Contrasena actualizada.' });
 });
 
-rutasAuth.post('/clave/iniciar', autenticar, async (req, res) => {
+rutasAuth.post('/clave/iniciar', autenticar, verificarCorreoDisponible, async (req, res) => {
   const usuario = await prisma.usuario.findUnique({ where: { id: req.sesion!.id } });
   if (!usuario) return res.status(404).json({ error: 'Usuario no encontrado' });
   const verificacion = await crearVerificacion({

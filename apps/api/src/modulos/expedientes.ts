@@ -165,13 +165,12 @@ const verificacion = z.object({
   solicitanteDocumento: z.string().min(5).optional(),
   solicitanteRelacion: z.string().min(3).optional(),
   // Datos que el tecnico toma de la licencia de transito con el documento en
-  // la mano. Van al vehiculo, no al expediente: describen al vehiculo.
+  // la mano. Van al vehiculo, no al expediente: describen al vehiculo. El VIN
+  // y el numero de la licencia no se recogen: si llegan, zod los descarta.
   vehiculo: z
     .object({
       linea: z.string().optional(),
       clase: z.string().optional(),
-      licenciaTransito: z.string().optional(),
-      vin: z.string().optional(),
       chasis: z.string().optional(),
       motor: z.string().optional(),
       propietarioNombre: z.string().optional(),

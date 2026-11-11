@@ -5,9 +5,9 @@ import { ESTADOS, TIPOS } from '../comun/formato';
 
 const Tarjeta = ({ titulo, valor, detalle }: { titulo: string; valor: number | string; detalle?: string }) => (
   <div className="vidrio p-5">
-    <p className="text-xs uppercase tracking-wide text-slate-400">{titulo}</p>
-    <p className="mt-1 text-3xl font-semibold text-amber-300">{valor}</p>
-    {detalle && <p className="mt-1 text-xs text-slate-400">{detalle}</p>}
+    <p className="text-xs uppercase tracking-wide text-tinta-tenue">{titulo}</p>
+    <p className="mt-1 text-3xl font-semibold text-marca">{valor}</p>
+    {detalle && <p className="mt-1 text-xs text-tinta-tenue">{detalle}</p>}
   </div>
 );
 
@@ -16,14 +16,14 @@ const Tarjeta = ({ titulo, valor, detalle }: { titulo: string; valor: number | s
 const Acceso = ({ ruta, nombre, descripcion, aviso }: { ruta: string; nombre: string; descripcion: string; aviso?: string }) => (
   <Link
     to={ruta}
-    className="vidrio group flex items-center justify-between gap-3 p-5 transition hover:border-amber-300/40 hover:bg-white/15"
+    className="vidrio group flex items-center justify-between gap-3 p-5 transition hover:border-marca/40 hover:bg-velo/15"
   >
     <div className="min-w-0">
       <p className="font-medium">{nombre}</p>
-      <p className="truncate text-xs text-slate-400">{descripcion}</p>
-      {aviso && <p className="mt-1 inline-block rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-200">{aviso}</p>}
+      <p className="truncate text-xs text-tinta-tenue">{descripcion}</p>
+      {aviso && <p className="mt-1 inline-block rounded-full bg-marca-fondo/20 px-2 py-0.5 text-xs text-marca">{aviso}</p>}
     </div>
-    <span className="shrink-0 text-xl text-slate-500 transition group-hover:translate-x-1 group-hover:text-amber-300">→</span>
+    <span className="shrink-0 text-xl text-tinta-sutil transition group-hover:translate-x-1 group-hover:text-marca">→</span>
   </Link>
 );
 
@@ -33,8 +33,8 @@ export function Panel() {
     queryFn: () => pedir<Indicadores>('/reportes/indicadores'),
   });
 
-  if (isLoading) return <p className="text-sm text-slate-400">Cargando indicadores…</p>;
-  if (error) return <p className="text-sm text-rose-300">{(error as Error).message}</p>;
+  if (isLoading) return <p className="text-sm text-tinta-tenue">Cargando indicadores…</p>;
+  if (error) return <p className="text-sm text-riesgo">{(error as Error).message}</p>;
   if (!data) return null;
 
   const totalServicios = data.porEstado.reduce((s, e) => s + e.total, 0);
@@ -45,7 +45,7 @@ export function Panel() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold">Panel de indicadores</h2>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-tinta-tenue">
           Tablero de la central: accesos a cada módulo y situación en tiempo real.
         </p>
       </div>
@@ -73,7 +73,7 @@ export function Panel() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="vidrio p-6">
           <h3 className="mb-1 font-medium">Servicios por estado</h3>
-          <p className="mb-4 text-xs text-slate-500">Pulse un estado para gestionarlo.</p>
+          <p className="mb-4 text-xs text-tinta-sutil">Pulse un estado para gestionarlo.</p>
           <div className="space-y-3">
             {data.porEstado.map((e) => (
               <Link key={e.estado} to="/servicios" className="block transition hover:opacity-80">
@@ -81,11 +81,11 @@ export function Panel() {
                   <span className={`etiqueta ${ESTADOS[e.estado]?.clase ?? ''}`}>
                     {ESTADOS[e.estado]?.texto ?? e.estado}
                   </span>
-                  <span className="text-slate-300">{e.total} →</span>
+                  <span className="text-tinta-suave">{e.total} →</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-2 overflow-hidden rounded-full bg-velo/10">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-200"
+                    className="h-full rounded-full bg-gradient-to-r from-marca-fondo to-marca"
                     style={{ width: `${(e.total / maximo) * 100}%` }}
                   />
                 </div>
@@ -96,17 +96,17 @@ export function Panel() {
 
         <section className="vidrio p-6">
           <h3 className="mb-1 font-medium">Servicios por tipo</h3>
-          <p className="mb-4 text-xs text-slate-500">Pulse un tipo para ver su historial.</p>
-          {data.porTipo.length === 0 && <p className="text-sm text-slate-400">Sin servicios clasificados.</p>}
+          <p className="mb-4 text-xs text-tinta-sutil">Pulse un tipo para ver su historial.</p>
+          {data.porTipo.length === 0 && <p className="text-sm text-tinta-tenue">Sin servicios clasificados.</p>}
           <div className="space-y-3">
             {data.porTipo.map((t) => (
               <Link
                 key={t.tipo}
                 to={`/historicos?categoria=${t.tipo}`}
-                className="vidrio-suave flex items-center justify-between px-4 py-3 transition hover:border-amber-300/40 hover:bg-white/15"
+                className="vidrio-suave flex items-center justify-between px-4 py-3 transition hover:border-marca/40 hover:bg-velo/15"
               >
                 <span className="text-sm">{TIPOS[t.tipo] ?? t.tipo}</span>
-                <span className="text-lg font-semibold text-amber-300">{t.total} →</span>
+                <span className="text-lg font-semibold text-marca">{t.total} →</span>
               </Link>
             ))}
           </div>

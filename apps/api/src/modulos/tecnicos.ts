@@ -3,7 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { EstadoServicio, Rol, TipoVerificacionCorreo } from '@prisma/client';
 import { prisma } from '../prisma.js';
-import { autenticar, crearVerificacion, exigirRol, validarVerificacion } from '../auth.js';
+import { autenticar, crearVerificacion, exigirRol, validarVerificacion, verificarCorreoDisponible } from '../auth.js';
 import { distanciaRecorridoKm, estimarMinutos, puntoDe } from '../geo.js';
 import { CERRADOS } from '../estado.js';
 
@@ -176,7 +176,7 @@ rutasTecnicos.patch('/yo/ubicacion', exigirRol('TECNICO', 'ADMINISTRADOR'), asyn
   );
 });
 
-rutasTecnicos.post('/iniciar', exigirRol('ADMINISTRADOR'), async (req, res) => {
+rutasTecnicos.post('/iniciar', exigirRol('ADMINISTRADOR'), verificarCorreoDisponible, async (req, res) => {
   const datos = tecnicoConCorreo.safeParse(req.body);
   if (!datos.success) return res.status(400).json({ error: 'Datos invalidos' });
 

@@ -7,36 +7,41 @@ import { randomUUID } from 'node:crypto';
 import { eliminarObjeto, urlDeSubidaTarjeta } from '../almacenamiento.js';
 import { analizarTarjeta } from '../ocr.js';
 
-// La placa es el identificador natural del vehiculo y con ella se consulta
-// el historial, por eso se guarda siempre en mayusculas y sin espacios.
-// Lo que el cliente sabe de memoria. Los identificadores de la licencia de
-// transito (VIN, chasis, motor) NO se piden aqui a proposito: los toma el
-// tecnico en sitio con la tarjeta de propiedad en la mano, al verificar el
-// expediente. Pedirlos al registrar solo lograria que el cliente los dejara
-// vacios o los inventara.
-const vehiculo = z.object({
-  placa: z.string().min(5).max(6).transform((p) => p.toUpperCase().replace(/\s/g, '')),
-  marca: z.string().min(2),
-  modelo: z.string().min(2),
-  color: z.string().min(3),
-  linea: z.string().optional(),
-  clase: z.string().optional(),
-  // opcional: cuando lo registra el propio cliente se toma de su sesion.
-  clienteId: z.coerce.number().int().positive().optional(),
-});
-
-// Datos del documento del vehiculo: los completa el tecnico al verificar o la
-// central por telefono, nunca el cliente al registrarse.
+// Datos del documento del vehiculo. Al cliente no se le PIDEN en el
+// formulario: chasis y motor los toma el tecnico en sitio con el documento en
+// la mano, al verificar el expediente.
+//
+// El VIN y el numero de la licencia de transito NO se recogen (decision del
+// equipo, nov. 2026): no estan en el esquema, asi que si una peticion los trae
+// zod los descarta y nunca llegan a la base.
 const documentos = z.object({
   linea: z.string().optional(),
   clase: z.string().optional(),
-  licenciaTransito: z.string().optional(),
-  vin: z.string().optional(),
   chasis: z.string().optional(),
   motor: z.string().optional(),
   propietarioNombre: z.string().optional(),
   propietarioDocumento: z.string().optional(),
 });
+
+// La placa es el identificador natural del vehiculo y con ella se consulta el
+// historial, por eso se guarda siempre en mayusculas y sin espacios.
+const vehiculo = z
+  .object({
+    placa: z.string().min(5).max(6).transform((p) => p.toUpperCase().replace(/\s/g, '')),
+    marca: z.string().min(2),
+    modelo: z.string().min(2),
+    color: z.string().min(3),
+    // opcional: cuando lo registra el propio cliente se toma de su sesion.
+    clienteId: z.coerce.number().int().positive().optional(),
+  })
+  // Los datos del documento se ACEPTAN al registrar, pero no se piden. La
+  // diferencia importa: al cliente se le piden solo los cuatro datos que sabe
+  // de memoria, y si ademas fotografia la licencia de transito, lo que se leyo
+  // de ella se guarda en vez de tirarse para que el tecnico lo vuelva a
+  // teclear. Lo que entre por aqui es lo que diga el documento del cliente;
+  // la comprobacion de quien entrega el vehiculo la hace el tecnico en sitio,
+  // aparte, y es la que tiene valor como soporte.
+  .merge(documentos);
 
 // Tope de vehiculos que un cliente puede registrar por su cuenta. Si necesita
 // mas, lo registra la central. Cambiar aqui el valor ajusta la regla.
@@ -50,15 +55,23 @@ const objeto = z.object({
 export const rutasVehiculos = Router();
 rutasVehiculos.use(autenticar);
 
-rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (_req, res) => {
+// El TECNICO tambien lee la tarjeta, y no es un permiso de adorno: si el
+// cliente registro el vehiculo sin los datos del documento —que es lo normal,
+// porque no se los pedimos—, quien tiene la licencia de transito en la mano es
+// el tecnico en el sitio. Sin esto tendria que teclear los datos a ojo.
+const LEEN_TARJETA = ['ADMINISTRADOR', 'CENTRAL', 'CLIENTE', 'TECNICO'] as const;
+
+rutasVehiculos.post('/leer-tarjeta/preparar', exigirRol(...LEEN_TARJETA), async (_req, res) => {
   const subida = await urlDeSubidaTarjeta(randomUUID());
   if (!subida.url) return res.status(503).json({ error: 'La lectura automática requiere OCR AWS configurado.' });
   res.json(subida);
 });
 
-rutasVehiculos.post('/leer-tarjeta/analizar', exigirRol('ADMINISTRADOR', 'CENTRAL', 'CLIENTE'), async (req, res) => {
+rutasVehiculos.post('/leer-tarjeta/analizar', exigirRol(...LEEN_TARJETA), async (req, res) => {
   const clave = typeof req.body?.clave === 'string' ? req.body.clave : '';
   if (!clave) return res.status(400).json({ error: 'Falta la imagen de la tarjeta.' });
+  // Solo se lee el frente: trae los datos del vehiculo y tambien al
+  // propietario. Un campo `cara` de clientes viejos se ignora.
   try {
     res.json(await analizarTarjeta(clave));
   } catch (error) {

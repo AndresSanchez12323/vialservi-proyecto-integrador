@@ -1,48 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { enviar, leerTarjeta, pedir, sesion, type Cliente, type DatosTarjeta, type Vehiculo } from '../comun/api';
+import { useNavigate } from 'react-router-dom';
+import { enviar, pedir, sesion, type Cliente, type LecturaTarjeta, type Vehiculo } from '../comun/api';
 import { MAX_VEHICULOS_CLIENTE } from '../comun/formato';
+import { CapturaTarjeta } from '../comun/CapturaTarjeta';
+import { avisoError, avisoExito, confirmar } from '../comun/avisos';
 
 type ClienteYo = Cliente & { vehiculos: Vehiculo[] };
 
-function LeerTarjeta({ alLeer }: { alLeer: (datos: DatosTarjeta) => void }) {
-  const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState('');
+/** Los cuatro datos que cualquiera sabe de su vehiculo sin mirar el documento. */
+type Basicos = { placa: string; marca: string; modelo: string; color: string };
 
-  return (
-    <div className="space-y-2 sm:col-span-2">
-      <input
-        id="foto-tarjeta"
-        type="file"
-        accept="image/jpeg"
-        capture="environment"
-        className="sr-only"
-        onChange={async (e) => {
-          const archivo = e.target.files?.[0];
-          e.target.value = '';
-          if (!archivo) return;
-          setError('');
-          setCargando(true);
-          try {
-            alLeer(await leerTarjeta(archivo));
-          } catch (e) {
-            setError(e instanceof Error ? e.message : 'No se pudo leer la tarjeta.');
-          } finally {
-            setCargando(false);
-          }
-        }}
-      />
-      <label htmlFor="foto-tarjeta" className="boton-suave inline-flex cursor-pointer">
-        {cargando ? 'Leyendo tarjeta…' : '📷 Tomar foto de la tarjeta de propiedad'}
-      </label>
-      <p className="text-xs text-slate-400">
-        La foto se procesa con Amazon Textract y los datos quedan editables antes de guardar.
-      </p>
-      {error && <p className="text-sm text-rose-300">{error}</p>}
-    </div>
-  );
-}
+const BASICOS_VACIOS: Basicos = { placa: '', marca: '', modelo: '', color: '' };
+
+const basicosCompletos = (b: Basicos) =>
+  b.placa.trim().length >= 5 && b.marca.trim().length >= 2 &&
+  b.modelo.trim().length >= 2 && b.color.trim().length >= 3;
+
+/**
+ * Pasa lo leido de la tarjeta a las cuatro casillas del formulario. La lectura
+ * solo trae placa, marca, linea y color; la linea va a «Línea o modelo», que
+ * es lo que una persona escribiria ahi.
+ *
+ * Lo que trae la foto MANDA sobre lo que hay escrito, y es a proposito: volver
+ * a tomar una foto —o empezar la lectura de cero— es justo lo que hace alguien
+ * cuando el lector entendio mal, y si lo leido no pisara el valor anterior ese
+ * reintento no serviria de nada. Nada se guarda hasta pulsar el boton, asi que
+ * siempre queda ver el resultado y corregirlo a mano despues.
+ */
+const repartir = (datos: LecturaTarjeta, basicos: Basicos): Basicos => ({
+  placa: datos.placa ?? basicos.placa,
+  marca: datos.marca ?? basicos.marca,
+  modelo: datos.linea ?? basicos.modelo,
+  color: datos.color ?? basicos.color,
+});
 
 /** Registro del vehiculo. El cliente registra el suyo y la central registra
  *  el de cualquiera: es el paso previo a poder solicitar un servicio, porque
@@ -51,17 +42,10 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
   const rol = sesion.rol();
   const esCentral = rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
 
-  const [placa, setPlaca] = useState('');
-  const [marca, setMarca] = useState('');
-  const [modelo, setModelo] = useState('');
-  const [color, setColor] = useState('');
+  const [basicos, setBasicos] = useState<Basicos>(BASICOS_VACIOS);
   const [clienteId, setClienteId] = useState('');
-  const completar = (datos: DatosTarjeta) => {
-    setPlaca(datos.placa);
-    setMarca(datos.marca);
-    setModelo(datos.modelo);
-    setColor(datos.color);
-  };
+
+  const completar = (leido: LecturaTarjeta) => setBasicos((anterior) => repartir(leido, anterior));
 
   const { data: clientes } = useQuery({
     queryKey: ['clientes'],
@@ -71,34 +55,36 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
 
   const mutar = useMutation({
     mutationFn: () =>
-      enviar('/vehiculos', 'POST', {
-        placa, marca, modelo, color,
+      enviar<Vehiculo>('/vehiculos', 'POST', {
+        ...basicos,
         ...(esCentral ? { clienteId } : {}),
       }),
-    onSuccess: alTerminar,
+    onSuccess: (v) => {
+      avisoExito(`${v.placa} quedo registrado y ya se puede usar en un servicio.`, 'Vehiculo registrado');
+      alTerminar();
+    },
+    onError: (e) => avisoError(e, 'No se pudo registrar el vehiculo'),
   });
 
-  const completo =
-    placa.trim().length >= 5 && marca.trim().length >= 2 &&
-    modelo.trim().length >= 2 && color.trim().length >= 3 &&
-    (!esCentral || clienteId);
+  const completo = basicosCompletos(basicos) && (!esCentral || !!clienteId);
 
   return (
     <div className="vidrio space-y-3 p-5">
       <div>
         <p className="font-medium">Registrar un vehículo</p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-tinta-tenue">
           Queda enlazado a su propietario y se puede elegir al solicitar un servicio.
         </p>
       </div>
 
+      <CapturaTarjeta alLeer={completar} />
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LeerTarjeta alLeer={completar} />
         {esCentral && (
           <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="campo sm:col-span-2">
-            <option value="" className="bg-slate-800">Propietario…</option>
+            <option value="">Propietario…</option>
             {(clientes ?? []).map((c) => (
-              <option key={c.id} value={c.id} className="bg-slate-800">
+              <option key={c.id} value={c.id}>
                 {c.nombre} · {c.documento}
               </option>
             ))}
@@ -106,18 +92,31 @@ function Registrar({ alTerminar }: { alTerminar: () => void }) {
         )}
 
         <input
-          value={placa}
-          onChange={(e) => setPlaca(e.target.value.toUpperCase())}
+          value={basicos.placa}
+          onChange={(e) => setBasicos({ ...basicos, placa: e.target.value.toUpperCase() })}
           className="campo font-mono"
           placeholder="Placa (ABC123)"
           maxLength={6}
         />
-        <input value={marca} onChange={(e) => setMarca(e.target.value)} className="campo" placeholder="Marca" />
-        <input value={modelo} onChange={(e) => setModelo(e.target.value)} className="campo" placeholder="Línea o modelo" />
-        <input value={color} onChange={(e) => setColor(e.target.value)} className="campo" placeholder="Color" />
+        <input
+          value={basicos.marca}
+          onChange={(e) => setBasicos({ ...basicos, marca: e.target.value })}
+          className="campo"
+          placeholder="Marca"
+        />
+        <input
+          value={basicos.modelo}
+          onChange={(e) => setBasicos({ ...basicos, modelo: e.target.value })}
+          className="campo"
+          placeholder="Línea o modelo"
+        />
+        <input
+          value={basicos.color}
+          onChange={(e) => setBasicos({ ...basicos, color: e.target.value })}
+          className="campo"
+          placeholder="Color"
+        />
       </div>
-
-      {mutar.error && <p className="text-xs text-rose-300">{(mutar.error as Error).message}</p>}
 
       <button className="boton" disabled={!completo || mutar.isPending} onClick={() => mutar.mutate()}>
         {mutar.isPending ? 'Guardando…' : 'Registrar vehículo'}
@@ -134,8 +133,6 @@ export function Vehiculos() {
   const puedeEliminar = esCliente || rol === 'CENTRAL' || rol === 'ADMINISTRADOR';
   const [placa, setPlaca] = useState('');
   const [registrando, setRegistrando] = useState(false);
-  const [ok, setOk] = useState('');
-  const [vehiculoAEliminar, setVehiculoAEliminar] = useState<Vehiculo | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['vehiculos', placa],
@@ -150,8 +147,9 @@ export function Vehiculos() {
     enabled: esCliente,
   });
 
-  const [formV, setFormV] = useState({ placa: '', marca: '', modelo: '', color: '' });
-  const completar = (datos: DatosTarjeta) => setFormV((anterior) => ({ ...anterior, ...datos }));
+  const [basicos, setBasicos] = useState<Basicos>(BASICOS_VACIOS);
+
+  const completar = (leido: LecturaTarjeta) => setBasicos((anterior) => repartir(leido, anterior));
 
   const refrescar = () => {
     cola.invalidateQueries({ queryKey: ['vehiculos'] });
@@ -159,22 +157,46 @@ export function Vehiculos() {
   };
 
   const crearVehiculo = useMutation({
-    mutationFn: () => enviar<Vehiculo>('/vehiculos', 'POST', { ...formV, clienteId: yo?.id }),
-    onSuccess: (v) => {
-      setFormV({ placa: '', marca: '', modelo: '', color: '' });
-      setOk(`Vehículo ${v.placa} agregado. Ya puede solicitar un servicio para este.`);
+    mutationFn: () =>
+      enviar<Vehiculo>('/vehiculos', 'POST', {
+        ...basicos,
+        clienteId: yo?.id,
+      }),
+    onSuccess: async (v) => {
+      setBasicos(BASICOS_VACIOS);
       refrescar();
+      // Registrar un vehiculo casi siempre es el paso previo a pedir algo,
+      // asi que se ofrece el atajo en vez de dejarlo buscar el formulario.
+      const ir = await confirmar({
+        titulo: `${v.placa} quedo registrado`,
+        texto: '¿Quiere solicitar un servicio para este vehiculo ahora?',
+        confirmar: 'Solicitar servicio',
+        cancelar: 'Mas tarde',
+        peligro: false,
+      });
+      if (ir) navegar(`/servicios?vehiculoId=${v.id}`);
     },
+    onError: (e) => avisoError(e, 'No se pudo agregar el vehiculo'),
   });
 
+  /** Confirmar el archivado conservando el historial. */
   const eliminarVehiculo = useMutation({
     mutationFn: (id: number) => enviar(`/vehiculos/${id}/archivar`, 'PATCH'),
     onSuccess: () => {
-      setVehiculoAEliminar(null);
-      setOk(`Vehículo eliminado.`);
+      avisoExito('El vehículo se archivó y conserva su historial.', 'Vehículo archivado');
       refrescar();
     },
+    onError: (e) => avisoError(e, 'No se pudo archivar'),
   });
+
+  const pedirEliminar = async (v: Vehiculo) => {
+    const seguro = await confirmar({
+      titulo: `¿Archivar ${v.placa}?`,
+      texto: `${v.marca} ${v.modelo}. Se conserva su historial. Solo es posible si no tiene expedientes ni servicios abiertos.`,
+      confirmar: 'Sí, archivar',
+    });
+    if (seguro) eliminarVehiculo.mutate(v.id);
+  };
 
   const cuantos = yo?.vehiculos.length ?? 0;
   const enElTope = cuantos >= MAX_VEHICULOS_CLIENTE;
@@ -185,7 +207,7 @@ export function Vehiculos() {
         <h2 className="text-xl font-semibold">
           {esCliente ? 'Mis vehículos' : 'Gestionar vehículo e inventario'}
         </h2>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-tinta-tenue">
           {esCliente
             ? 'Registre sus vehículos y después solicite el servicio que necesite.'
             : 'El vehículo es el punto de partida: sin vehículo no hay servicio.'}
@@ -196,50 +218,43 @@ export function Vehiculos() {
         <section className="vidrio space-y-3 p-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-medium">Agregar un nuevo vehículo</h3>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-tinta-tenue">
               {cuantos} de {MAX_VEHICULOS_CLIENTE} registrados
             </span>
           </div>
 
           {enElTope ? (
-            <p className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            <p className="rounded-lg border border-marca/30 bg-marca-fondo/10 px-3 py-2 text-sm text-marca">
               Ya tiene {MAX_VEHICULOS_CLIENTE} vehículos registrados, que es el máximo por cuenta.
               Si necesita otro, comuníquese con la central.
             </p>
           ) : (
             <>
+              <CapturaTarjeta
+                alLeer={completar}
+                nota="Si tiene a mano la licencia de tránsito, fotografíe el frente y la placa, la marca, la línea y el color se llenan solos."
+              />
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <LeerTarjeta alLeer={completar} />
-                <input value={formV.placa} onChange={(e) => setFormV({ ...formV, placa: e.target.value.toUpperCase() })} placeholder="Placa (ej: ABC123)" className="campo font-mono" maxLength={6} />
-                <input value={formV.marca} onChange={(e) => setFormV({ ...formV, marca: e.target.value })} placeholder="Marca" className="campo" />
-                <input value={formV.modelo} onChange={(e) => setFormV({ ...formV, modelo: e.target.value })} placeholder="Línea o modelo" className="campo" />
-                <input value={formV.color} onChange={(e) => setFormV({ ...formV, color: e.target.value })} placeholder="Color" className="campo" />
+                <input value={basicos.placa} onChange={(e) => setBasicos({ ...basicos, placa: e.target.value.toUpperCase() })} placeholder="Placa (ej: ABC123)" className="campo font-mono" maxLength={6} />
+                <input value={basicos.marca} onChange={(e) => setBasicos({ ...basicos, marca: e.target.value })} placeholder="Marca" className="campo" />
+                <input value={basicos.modelo} onChange={(e) => setBasicos({ ...basicos, modelo: e.target.value })} placeholder="Línea o modelo" className="campo" />
+                <input value={basicos.color} onChange={(e) => setBasicos({ ...basicos, color: e.target.value })} placeholder="Color" className="campo" />
               </div>
-              <p className="text-xs text-slate-400">
-                No le pedimos el VIN ni el número de la tarjeta de propiedad: esos datos los
-                toma el técnico en el sitio, con el documento en la mano.
+
+              <p className="text-xs text-tinta-tenue">
+                Solo le pedimos los cuatro datos de arriba.
               </p>
-              {crearVehiculo.error && <p className="text-sm text-rose-300">{(crearVehiculo.error as Error).message}</p>}
               <button
                 className="boton"
-                disabled={
-                  crearVehiculo.isPending || formV.placa.length < 5 || formV.marca.length < 2 ||
-                  formV.modelo.length < 2 || formV.color.length < 3
-                }
-                onClick={() => { setOk(''); crearVehiculo.mutate(); }}
+                disabled={crearVehiculo.isPending || !basicosCompletos(basicos)}
+                onClick={() => crearVehiculo.mutate()}
               >
                 {crearVehiculo.isPending ? 'Agregando…' : 'Agregar vehículo'}
               </button>
             </>
           )}
         </section>
-      )}
-
-      {ok && (
-        <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-          {ok}{' '}
-          <Link to="/servicios" className="underline hover:text-emerald-100">Solicitar el servicio →</Link>
-        </p>
       )}
 
       {!esCliente && (
@@ -261,26 +276,15 @@ export function Vehiculos() {
         />
       )}
 
-      {isLoading && <p className="text-sm text-slate-400">Cargando…</p>}
-      {error && <p className="text-sm text-rose-300">{(error as Error).message}</p>}
+      {isLoading && <p className="text-sm text-tinta-tenue">Cargando…</p>}
+      {error && <p className="text-sm text-riesgo">{(error as Error).message}</p>}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.map((v) => (
-          <article key={v.id} className="vidrio p-5">
-            <p className="font-mono text-lg text-amber-300">{v.placa}</p>
+          <article key={v.id} className="vidrio min-w-0 p-5">
+            <p className="font-mono text-lg text-marca">{v.placa}</p>
             <p className="mt-1 text-sm">{v.marca} {v.modelo}</p>
-            <p className="text-sm text-slate-400">Color {v.color.toLowerCase()}</p>
-
-            {/* Lo que el tecnico completo con la tarjeta de propiedad. Si esta
-                vacio, es que ese vehiculo aun no ha pasado por un servicio. */}
-            {(v.vin || v.licenciaTransito) && (
-              <dl className="mt-3 space-y-0.5 border-t border-white/10 pt-2 text-xs text-slate-400">
-                {v.licenciaTransito && (
-                  <div className="flex justify-between"><dt>Lic. tránsito</dt><dd className="font-mono">{v.licenciaTransito}</dd></div>
-                )}
-                {v.vin && <div className="flex justify-between"><dt>VIN</dt><dd className="font-mono">{v.vin}</dd></div>}
-              </dl>
-            )}
+            <p className="text-sm text-tinta-tenue">Color {v.color.toLowerCase()}</p>
 
             {puedeEliminar ? (
               <div className="mt-3 space-y-2">
@@ -292,87 +296,24 @@ export function Vehiculos() {
                   Solicitar servicio →
                 </button>}
                 <button
-                  className="w-full rounded-lg border border-rose-400/30 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/10 disabled:opacity-50"
+                  className="w-full rounded-lg border border-riesgo/30 px-3 py-2 text-sm text-riesgo transition hover:bg-riesgo-fondo/10 disabled:opacity-50"
                   disabled={eliminarVehiculo.isPending}
-                  onClick={() => {
-                    eliminarVehiculo.reset();
-                    setVehiculoAEliminar(v);
-                  }}
+                  onClick={() => pedirEliminar(v)}
                 >
                   {eliminarVehiculo.isPending ? 'Archivando…' : 'Archivar vehículo'}
                 </button>
               </div>
             ) : (
-              <p className="mt-3 border-t border-white/10 pt-3 text-sm">
-                <span className="text-slate-400">Propietario: </span>
+              <p className="mt-3 border-t border-velo/10 pt-3 text-sm">
+                <span className="text-tinta-tenue">Propietario: </span>
                 {v.cliente?.nombre ?? '—'}
               </p>
             )}
           </article>
         ))}
-        {data?.length === 0 && <p className="text-sm text-slate-400">Sin resultados.</p>}
+        {data?.length === 0 && <p className="text-sm text-tinta-tenue">Sin resultados.</p>}
       </div>
 
-      {vehiculoAEliminar && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-sm"
-          role="presentation"
-          onClick={() => { if (!eliminarVehiculo.isPending) setVehiculoAEliminar(null); }}
-        >
-          <div
-            className="vidrio w-full max-w-md space-y-4 border border-white/15 p-6 shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="titulo-eliminar-vehiculo"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div>
-              <p className="text-xs uppercase tracking-wide text-rose-300">Archivar vehículo</p>
-              <h3 id="titulo-eliminar-vehiculo" className="mt-1 text-lg font-semibold text-white">
-                  ¿Archivar {vehiculoAEliminar.placa}?
-              </h3>
-              <p className="mt-2 text-sm text-slate-300">
-                Se archivará el vehículo para conservar todos sus expedientes históricos. Solo es posible si no tiene expedientes ni servicios abiertos.
-              </p>
-            </div>
-
-            {eliminarVehiculo.error && (
-              <p className="rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-2 text-sm text-rose-200" role="alert">
-                {(eliminarVehiculo.error as Error).message}
-              </p>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="boton-suave"
-                disabled={eliminarVehiculo.isPending}
-                onClick={() => setVehiculoAEliminar(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-rose-300/50 bg-rose-500/20 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/30 disabled:opacity-50"
-                disabled={eliminarVehiculo.isPending}
-                onClick={() => {
-                  if (eliminarVehiculo.error) {
-                    setVehiculoAEliminar(null);
-                  } else {
-                    eliminarVehiculo.mutate(vehiculoAEliminar.id);
-                  }
-                }}
-              >
-                {eliminarVehiculo.error
-                  ? 'Aceptar'
-                  : eliminarVehiculo.isPending
-                    ? 'Eliminando…'
-                    :                     'Sí, archivar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

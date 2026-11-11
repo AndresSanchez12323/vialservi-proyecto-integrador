@@ -437,6 +437,12 @@ describe('C. Clasificacion y expediente', () => {
       },
     });
     const t = await prisma.tecnico.findFirstOrThrow({ where: { documento: '3001' } });
+    // El servidor no asigna a un tecnico que ya tiene trabajo activo, y el
+    // seed deja uno EN_EJECUCION. Se cierra ese pendiente para montar el caso.
+    await prisma.servicio.updateMany({
+      where: { tecnicoId: t.id, estado: { in: ['ASIGNADO', 'EN_EJECUCION'] } },
+      data: { terminadoEn: new Date(), estado: 'TERMINADO' },
+    });
 
     const r = await como(central)(
       request(app).patch(`/api/servicios/${servicio.id}/clasificar`)

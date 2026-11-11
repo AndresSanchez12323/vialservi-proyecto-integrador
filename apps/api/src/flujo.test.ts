@@ -44,7 +44,7 @@ beforeAll(async () => {
 });
 
 const confirmarRegistro = async (datos: {
-  documento: string; nombre: string; correo: string; telefono: string; clave: string;
+  documento: string; nombre: string; correo: string; telefono: string; clave: string; rol?: string;
 }) => {
   const iniciado = await request(app).post('/api/auth/registro/iniciar').send(datos);
   expect(iniciado.status).toBe(202);
@@ -93,6 +93,7 @@ describe('R. Registro publico de cliente', () => {
     const r = await confirmarRegistro({
       documento,
       nombre: 'Intento de central',
+      rol: 'CENTRAL',
       correo: `x${documento}@correo.com`,
       telefono: '3001112233',
       clave: 'ClaveSegura123',
@@ -227,7 +228,7 @@ describe('T. Gestion de tecnicos', () => {
 
     const tecnico = await prisma.tecnico.findUniqueOrThrow({ where: { documento } });
     const duplicado = await como(admin)(request(app).put(`/api/tecnicos/${tecnico.id}`).send({
-      documento: '3001',
+      documento: '71234567',
     }));
     expect(duplicado.status).toBe(409);
     const nuevoDocumento = `6${unico()}`.slice(0, 12);
@@ -547,17 +548,107 @@ describe('V. Verificacion de quien entrega el vehiculo', () => {
     expect(exp.esPropietario).toBe(true);
   });
 
-  it('V7 · el tecnico completa los datos de la licencia de transito del vehiculo', async () => {
+  it('V7 · el tecnico completa datos del documento, pero el VIN y la licencia no se guardan', async () => {
     const { expedienteId, vehiculoId } = await servicioEnEjecucion();
     await como(tecnico1)(
       request(app).patch(`/api/expedientes/${expedienteId}/verificacion`).send({
         esPropietario: true, version: 1,
+        // Un cliente viejo o malicioso podria mandarlos: el esquema los descarta.
         vehiculo: { vin: '9GAJC5220RB099999', licenciaTransito: '55667788', clase: 'Automóvil' },
       }),
     );
     const v = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
-    expect(v.vin).toBe('9GAJC5220RB099999');
-    expect(v.licenciaTransito).toBe('55667788');
+    expect(v.clase).toBe('Automóvil');
+    expect(v.vin).toBeNull();
+    expect(v.licenciaTransito).toBeNull();
+  });
+
+  it('V8 · por la verificacion NO se puede cambiar la placa del vehiculo', async () => {
+    const { expedienteId, vehiculoId } = await servicioEnEjecucion();
+    const antes = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
+
+    await como(tecnico1)(
+      request(app).patch(`/api/expedientes/${expedienteId}/verificacion`).send({
+        esPropietario: true, version: 1,
+        // La placa va a proposito en la peticion: identifica al vehiculo del
+        // servicio y cambiarla aqui seria cambiar de vehiculo a mitad de un
+        // expediente, asi que el esquema la descarta en silencio.
+        vehiculo: { placa: 'ZZZ999', chasis: '9GAJC5220RB011111' },
+      }),
+    );
+
+    const despues = await prisma.vehiculo.findUniqueOrThrow({ where: { id: vehiculoId } });
+    expect(despues.placa).toBe(antes.placa);
+    expect(despues.chasis).toBe('9GAJC5220RB011111');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+/**
+ * Lectura de la licencia de transito (tarjeta de propiedad).
+ *
+ * En las pruebas OCR_MODO es "local", asi que Textract no se llama: lo que se
+ * comprueba aqui es el contrato de las rutas —quien puede pedirlas y que
+ * validan— y que los datos del documento lleguen al vehiculo. El 503 es la
+ * respuesta correcta sin AWS configurado, y sirve de testigo: si el permiso
+ * se rompiera, estas rutas contestarian 403.
+ */
+describe('L. Licencia de transito', () => {
+  it('L1 · el TECNICO puede pedir la lectura de la tarjeta, no solo el cliente y la central', async () => {
+    for (const token of [tecnico1, central, admin]) {
+      const r = await como(token)(request(app).post('/api/vehiculos/leer-tarjeta/preparar'));
+      expect(r.status).not.toBe(403);
+      expect(r.status).toBe(503);
+      expect(r.body.error).toMatch(/OCR/i);
+    }
+  });
+
+  it('L2 · analizar sin imagen responde que falta la foto, no un error del lector', async () => {
+    const r = await como(tecnico1)(
+      request(app).post('/api/vehiculos/leer-tarjeta/analizar').send({ cara: 'reverso' }),
+    );
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/imagen/i);
+  });
+
+  it('L3 · al registrar el vehiculo se guardan los datos del documento, salvo VIN y licencia', async () => {
+    const { documento, token } = await registrarCliente();
+    const placa = placaNueva();
+
+    const r = await como(token)(
+      request(app).post('/api/vehiculos').send({
+        placa, marca: 'Renault', modelo: 'Logan', color: 'Gris',
+        // Lo que sale de la foto de la tarjeta. No se le PIDE al cliente en el
+        // formulario, pero si lo fotografio no se tira para que el tecnico lo
+        // vuelva a teclear en el sitio.
+        linea: 'Logan Life', clase: 'Automóvil', licenciaTransito: '11223344',
+        vin: '9FBJC5220RB077777', propietarioNombre: 'Cliente Registrado',
+        propietarioDocumento: documento,
+      }),
+    );
+    expect(r.status).toBe(201);
+
+    const v = await prisma.vehiculo.findUniqueOrThrow({ where: { placa } });
+    // El sistema no recoge el VIN ni el numero de la licencia de transito.
+    expect(v.licenciaTransito).toBeNull();
+    expect(v.vin).toBeNull();
+    expect(v.linea).toBe('Logan Life');
+    expect(v.propietarioDocumento).toBe(documento);
+  });
+
+  it('L4 · los datos del documento son opcionales: el registro de siempre sigue funcionando', async () => {
+    const { token } = await registrarCliente();
+    const placa = placaNueva();
+    const r = await como(token)(
+      request(app).post('/api/vehiculos').send({
+        placa, marca: 'Mazda', modelo: 'Mazda 3', color: 'Rojo',
+      }),
+    );
+    expect(r.status).toBe(201);
+
+    const v = await prisma.vehiculo.findUniqueOrThrow({ where: { placa } });
+    expect(v.vin).toBeNull();
+    expect(v.licenciaTransito).toBeNull();
   });
 });
 
@@ -1004,10 +1095,26 @@ const servicioSolicitado = async (opciones: Opciones = {}) => {
   };
 };
 
+/**
+ * Cada escenario es un dia independiente, pero todos usan al tecnico 3001
+ * porque las pruebas actuan despues con SU token. El servidor ya no permite
+ * asignarle un segundo trabajo mientras tenga uno ASIGNADO o EN_EJECUCION, asi
+ * que se da por terminado lo que quedo del escenario anterior (y del seed)
+ * antes de asignarle el nuevo. Se toca la base directamente a proposito: es
+ * montaje del escenario, no parte de lo que se esta comprobando.
+ */
+const liberarTecnico = async (tecnicoId: number) => {
+  await prisma.servicio.updateMany({
+    where: { tecnicoId, estado: { in: ['ASIGNADO', 'EN_EJECUCION'] } },
+    data: { terminadoEn: new Date(), estado: 'TERMINADO' },
+  });
+};
+
 /** Lo anterior, ya clasificado y asignado al tecnico 3001 por la central. */
 const servicioAsignado = async (opciones: Opciones = {}) => {
   const base = await servicioSolicitado(opciones);
   const t = await prisma.tecnico.findFirstOrThrow({ where: { documento: '3001' } });
+  await liberarTecnico(t.id);
 
   const r = await como(central)(
     request(app).patch(`/api/servicios/${base.servicioId}/clasificar`).send({

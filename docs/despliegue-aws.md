@@ -197,12 +197,15 @@ aunque arranquen dos tareas a la vez.
 
 ---
 
-## 5. Correo de verificación y recuperación
+## 5. Correo de recuperación con SES
 
-> ⚠️ `CORREO_MODO=consola` solo sirve para desarrollo local. En producción el
-> API no arranca con ese valor, porque los códigos de registro, alta de
-> técnicos y cambio de contraseña nunca llegarían al usuario. Configure
-> `smtp` o `ses` antes de publicar la Lambda.
+> ⚠️ **Si pidieron la recuperación y no llegó ningún código, lo normal es que
+> sea esto.** Recién desplegado, el API queda en `CORREO_MODO=consola`: el
+> código se genera, se guarda y se valida bien, pero **solo se imprime en
+> CloudWatch**. Al usuario no le llega nada, y la pantalla no puede avisarlo
+> —decir «esa cuenta no tiene correo» revelaría qué cédulas existen—. Desde el
+> arranque el API grita este aviso en el log; búsquenlo con
+> `aws logs tail /ecs/vialservi-api --region us-east-1`.
 
 ### Dos caminos
 
@@ -298,9 +301,8 @@ aws ecs describe-task-definition --task-definition vialservi-api --region us-eas
   --query "taskDefinition.containerDefinitions[0].environment[?name=='CORREO_MODO']"
 ```
 
-Si devuelve `consola`, el despliegue no es válido y la Lambda fallará al
-arrancar. Con `ses` o `smtp` los códigos sí se envían, y los rechazos del
-proveedor quedan en CloudWatch con el motivo.
+Si devuelve `consola`, los correos no salen. Con `ses` o `smtp` salen, y los
+rechazos del proveedor quedan en CloudWatch con el motivo.
 
 ### Cómo se ve el correo
 
@@ -444,3 +446,16 @@ Si no pueden usar Docker, sirve cualquier PostgreSQL 16: basta apuntar
 
 En local, `ALMACENAMIENTO_MODO=local` y `CORREO_MODO=consola`, así que **no hace
 falta cuenta de AWS para desarrollar ni para la demostración**.
+
+
+## Verificación de cuentas en Lambda (noviembre de 2026)
+
+Para redesplegar use `infra/desplegar-serverless.ps1` y consulte
+`docs/migracion-serverless.md`; los comandos ECS anteriores son históricos.
+
+El modo consola no entrega códigos al usuario. En producción se conserva el
+arranque de la API y las operaciones existentes; iniciar una verificación
+de registro, alta de técnico o cambio de clave devuelve 503 hasta configurar
+SMTP o SES. Antes de habilitar el registro, configure el proveedor mediante
+los parámetros de la pila Lambda y SSM existentes y pruebe la entrega real
+a un correo autorizado. No exponga claves SMTP ni códigos en respuestas HTTP.

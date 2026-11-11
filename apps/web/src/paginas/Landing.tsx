@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { sesion } from '../comun/api';
 import { inicioPorRol } from '../comun/Atras';
+import { BotonTema } from '../comun/BotonTema';
 import { Logo } from '../comun/Logo';
 // Foto de la tarjeta del héroe: grúa de plataforma cargando un vehículo.
 // Dominio público (PD-self, Jelson25, 2006) vía Wikimedia Commons:
@@ -17,9 +18,11 @@ import gruaHero from '../recursos/grua-hero.jpg';
  * cargar— para que abra al instante y funcione aunque el servidor esté
  * arrancando.
  *
- * Reutiliza el lenguaje visual de la aplicación (vidrio esmerilado, ámbar sobre
- * fondo oscuro) para que el salto de la landing a la app no se sienta como
- * cambiar de producto.
+ * Reutiliza el lenguaje visual de la aplicación (vidrio esmerilado y ámbar de
+ * marca, en los dos temas) para que el salto de la landing a la app no se
+ * sienta como cambiar de producto. El interruptor de tema está en la barra
+ * superior: quien llega con el equipo en claro ve la landing en claro, y entra
+ * a la aplicación con el mismo tema.
  */
 
 // Íconos en SVG inline: no se agregan dependencias ni se cargan imágenes que
@@ -103,15 +106,15 @@ function Carrusel() {
               aria-hidden={LAMINAS[activo].titulo !== l.titulo}
             >
               <div className="flex items-center gap-4">
-                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-400/20 text-amber-200">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-marca-fondo/20 text-marca">
                   <Icono d={l.icono} className="h-7 w-7" />
                 </span>
-                <span className="etiqueta border border-amber-300/40 bg-amber-400/15 text-amber-200">
+                <span className="etiqueta border border-marca/40 bg-marca-fondo/15 text-marca">
                   {l.etiqueta}
                 </span>
               </div>
               <h3 className="mt-5 text-2xl font-semibold sm:text-3xl">{l.titulo}</h3>
-              <p className="mt-3 max-w-2xl text-slate-300">{l.texto}</p>
+              <p className="mt-3 max-w-2xl text-tinta-suave">{l.texto}</p>
             </article>
           ))}
         </div>
@@ -135,7 +138,7 @@ function Carrusel() {
               aria-label={`Ir al servicio ${i + 1}`}
               aria-current={i === activo}
               className={`h-2.5 rounded-full transition-all ${
-                i === activo ? 'w-8 bg-amber-400' : 'w-2.5 bg-white/25 hover:bg-white/50'
+                i === activo ? 'w-8 bg-marca-fondo' : 'w-2.5 bg-velo/25 hover:bg-velo/50'
               }`}
             />
           ))}
@@ -155,21 +158,21 @@ function Carrusel() {
 // ── Secciones ───────────────────────────────────────────────────────────────
 const Pilar = ({ icono, titulo, texto }: { icono: string; titulo: string; texto: string }) => (
   <article className="vidrio p-6">
-    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-400/15 text-sky-200">
+    <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-dato-fondo/15 text-dato">
       <Icono d={icono} className="h-6 w-6" />
     </span>
     <h3 className="mt-4 text-lg font-semibold">{titulo}</h3>
-    <p className="mt-2 text-sm text-slate-300">{texto}</p>
+    <p className="mt-2 text-sm text-tinta-suave">{texto}</p>
   </article>
 );
 
 const Paso = ({ n, titulo, texto }: { n: number; titulo: string; texto: string }) => (
   <li className="vidrio-suave relative p-5 pl-16">
-    <span className="absolute left-5 top-5 flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-slate-900">
+    <span className="absolute left-5 top-5 flex h-7 w-7 items-center justify-center rounded-full bg-marca-fondo text-sm font-bold text-marca-tinta">
       {n}
     </span>
     <h4 className="font-medium">{titulo}</h4>
-    <p className="mt-1 text-sm text-slate-400">{texto}</p>
+    <p className="mt-1 text-sm text-tinta-tenue">{texto}</p>
   </li>
 );
 
@@ -191,7 +194,7 @@ export function Landing() {
       {/* ── Barra superior ── */}
       <header
         className={`sticky top-0 z-30 transition-colors ${
-          compacto ? 'border-b border-white/10 bg-[#0b1220]/80 backdrop-blur-md' : ''
+          compacto ? 'border-b border-velo/10 bg-lienzo/80 backdrop-blur-md' : ''
         }`}
       >
         <nav className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 lg:px-6">
@@ -199,13 +202,14 @@ export function Landing() {
             <Logo />
           </a>
 
-          <div className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
-            <a href="#servicios" className="hover:text-white">Servicios</a>
-            <a href="#como" className="hover:text-white">Cómo funciona</a>
-            <a href="#nosotros" className="hover:text-white">Nosotros</a>
+          <div className="hidden items-center gap-6 text-sm text-tinta-suave md:flex">
+            <a href="#servicios" className="hover:text-tinta">Servicios</a>
+            <a href="#como" className="hover:text-tinta">Cómo funciona</a>
+            <a href="#nosotros" className="hover:text-tinta">Nosotros</a>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <BotonTema />
             {haySesion ? (
               <Link to={inicioPorRol()} className="boton">Entrar a la app</Link>
             ) : (
@@ -228,14 +232,14 @@ export function Landing() {
               impone su ancho minimo a toda la columna y el texto de arriba se
               corta por el borde derecho. */}
           <div className="min-w-0">
-            <span className="etiqueta border border-sky-300/30 bg-sky-400/10 text-sky-200">
+            <span className="etiqueta border border-dato/30 bg-dato-fondo/10 text-dato">
               Asistencia vial · mecánica · grúa · conductor elegido
             </span>
             <h1 className="mt-5 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
               Cada atención, en un{' '}
-              <span className="text-amber-300">expediente único</span> y recuperable
+              <span className="text-marca">expediente único</span> y recuperable
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-slate-300">
+            <p className="mt-5 max-w-xl text-lg text-tinta-suave">
               VialServi reúne el formato del servicio, el vehículo, las personas y las
               evidencias en un solo lugar. Cuando un cliente reclama, la respuesta está en
               fotos, videos y registros con fecha y responsable, no en el celular de alguien.
@@ -264,8 +268,8 @@ export function Landing() {
                 ['1', 'expediente por atención'],
               ].map(([v, t]) => (
                 <div key={t} className="vidrio-suave min-w-0 px-3 py-3 text-center">
-                  <dt className="text-2xl font-semibold text-amber-300">{v}</dt>
-                  <dd className="mt-0.5 text-[11px] text-slate-400">{t}</dd>
+                  <dt className="text-2xl font-semibold text-marca">{v}</dt>
+                  <dd className="mt-0.5 text-[11px] text-tinta-tenue">{t}</dd>
                 </div>
               ))}
             </dl>
@@ -276,28 +280,28 @@ export function Landing() {
           <div className="relative">
             <div className="vidrio p-6">
               <div className="flex items-center justify-between">
-                <span className="etiqueta border border-amber-300/40 bg-amber-400/15 font-mono text-amber-200">
+                <span className="etiqueta border border-marca/40 bg-marca-fondo/15 font-mono text-marca">
                   EXP-2026-0042
                 </span>
-                <span className="etiqueta border border-emerald-300/30 bg-emerald-400/20 text-emerald-200">
+                <span className="etiqueta border border-exito/30 bg-exito-fondo/20 text-exito">
                   En camino
                 </span>
               </div>
               <img
                 src={gruaHero}
                 alt="Grúa de plataforma cargando un vehículo para su traslado al taller"
-                className="mt-4 h-36 w-full rounded-xl border border-white/10 object-cover"
+                className="mt-4 h-36 w-full rounded-xl border border-velo/10 object-cover"
               />
               <div className="mt-4 flex items-center justify-between text-sm">
                 <div>
-                  <p className="text-slate-400">Técnico asignado</p>
+                  <p className="text-tinta-tenue">Técnico asignado</p>
                   <p className="font-medium">Unidad 04 · a 2,9 km</p>
                 </div>
-                <p className="text-2xl font-semibold text-amber-300">~12 min</p>
+                <p className="text-2xl font-semibold text-marca">~12 min</p>
               </div>
             </div>
             <div className="vidrio absolute -bottom-5 -left-3 hidden items-center gap-2 px-4 py-2 text-sm sm:flex">
-              <Icono d={ICONOS.camara} className="h-5 w-5 text-sky-300" />
+              <Icono d={ICONOS.camara} className="h-5 w-5 text-dato" />
               Evidencias con autor y hora
             </div>
           </div>
@@ -308,7 +312,7 @@ export function Landing() {
       <section id="servicios" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-14 lg:px-6">
         <div className="mb-8 text-center">
           <h2 className="text-3xl font-semibold">Qué hacemos</h2>
-          <p className="mt-2 text-slate-400">Tres líneas de servicio, un mismo estándar de registro.</p>
+          <p className="mt-2 text-tinta-tenue">Tres líneas de servicio, un mismo estándar de registro.</p>
         </div>
         <Carrusel />
       </section>
@@ -353,7 +357,7 @@ export function Landing() {
       <section id="como" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-14 lg:px-6">
         <div className="mb-8">
           <h2 className="text-3xl font-semibold">Cómo funciona</h2>
-          <p className="mt-2 text-slate-400">Del pedido al cierre, sin huecos de información.</p>
+          <p className="mt-2 text-tinta-tenue">Del pedido al cierre, sin huecos de información.</p>
         </div>
         <ol className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Paso n={1} titulo="El cliente solicita" texto="Registra su vehículo y pide el servicio con su ubicación. No crea el expediente: solo describe lo que pasó." />
@@ -368,13 +372,13 @@ export function Landing() {
         <div className="vidrio grid grid-cols-1 gap-8 p-8 lg:grid-cols-2 lg:p-10">
           <div>
             <h2 className="text-3xl font-semibold">Quiénes somos</h2>
-            <p className="mt-4 text-slate-300">
+            <p className="mt-4 text-tinta-suave">
               VialServi S.A.S es una empresa de asistencia vial. Atendemos varadas
               y emergencias en la vía con tres servicios: carro taller para
               mecánica y cerrajería en el sitio, traslado en grúa y conductor
               elegido.
             </p>
-            <p className="mt-3 text-slate-300">
+            <p className="mt-3 text-tinta-suave">
               Nuestro compromiso es doble: llegar rápido y dejar constancia. Cada
               atención queda en un expediente único con el vehículo, las personas,
               las evidencias y los responsables, para responder por el servicio
@@ -383,15 +387,15 @@ export function Landing() {
           </div>
           <div className="grid grid-cols-1 content-start gap-4">
             <div className="vidrio-suave p-5">
-              <h3 className="font-medium text-amber-200">Atención en Medellín</h3>
-              <p className="mt-2 text-sm text-slate-300">
+              <h3 className="font-medium text-marca">Atención en Medellín</h3>
+              <p className="mt-2 text-sm text-tinta-suave">
                 La central recibe la solicitud, ubica el servicio y asigna al
                 técnico disponible más cercano según el tipo de atención.
               </p>
             </div>
             <div className="vidrio-suave p-5">
-              <h3 className="font-medium text-sky-200">Seguimiento en vivo</h3>
-              <p className="mt-2 text-sm text-slate-300">
+              <h3 className="font-medium text-dato">Seguimiento en vivo</h3>
+              <p className="mt-2 text-sm text-tinta-suave">
                 Desde que se asigna el técnico, el cliente ve en el mapa por
                 dónde va y cuánto falta, hasta que el servicio termina.
               </p>
@@ -404,7 +408,7 @@ export function Landing() {
       <section className="mx-auto max-w-6xl px-4 pb-20 lg:px-6">
         <div className="vidrio flex flex-col items-center gap-5 p-10 text-center">
           <h2 className="text-2xl font-semibold sm:text-3xl">¿Listo para empezar?</h2>
-          <p className="max-w-xl text-slate-300">
+          <p className="max-w-xl text-tinta-suave">
             Cree su cuenta de cliente, registre su vehículo y solicite su primer servicio.
             El personal de la central y los técnicos ingresan con las credenciales que les
             asigna la empresa.
@@ -423,16 +427,16 @@ export function Landing() {
       </section>
 
       {/* ── Pie ── */}
-      <footer className="border-t border-white/10">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm text-slate-400 sm:flex-row lg:px-6">
+      <footer className="border-t border-velo/10">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-sm text-tinta-tenue sm:flex-row lg:px-6">
           <div className="flex items-center gap-2">
             <Logo className="h-7" />
-            <span className="text-slate-400">· {new Date().getFullYear()}</span>
+            <span className="text-tinta-tenue">· {new Date().getFullYear()}</span>
           </div>
           <div className="flex gap-5">
-            <a href="#servicios" className="hover:text-white">Servicios</a>
-            <a href="#como" className="hover:text-white">Cómo funciona</a>
-            <Link to="/login" className="hover:text-white">Iniciar sesión</Link>
+            <a href="#servicios" className="hover:text-tinta">Servicios</a>
+            <a href="#como" className="hover:text-tinta">Cómo funciona</a>
+            <Link to="/login" className="hover:text-tinta">Iniciar sesión</Link>
           </div>
         </div>
       </footer>

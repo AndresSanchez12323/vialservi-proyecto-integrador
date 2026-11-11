@@ -6,12 +6,36 @@ $regionVial = 'us-east-1'
 $perfilVial = 'personal'
 
 function AwsVial {
-  $resultado = & aws @args --profile $perfilVial --region $regionVial
-  if ($LASTEXITCODE -ne 0) { throw 'Fallo AWS; revisar el diagnostico antes de continuar.' }
+  # El aviso de la CLI no es un fallo. Se aparta de la salida real para que el
+  # JSON siga siendo parseable y para que solo el codigo de salida detenga el
+  # despliegue: cortar a mitad deja la imagen subida y la pila sin actualizar.
+  $avisos = [System.Collections.Generic.List[string]]::new()
+  $previo = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $resultado = & aws @args --profile $perfilVial --region $regionVial 2>&1 |
+      Where-Object {
+        if ($_ -is [System.Management.Automation.ErrorRecord]) { $avisos.Add("$_"); $false }
+        else { $true }
+      }
+  } finally { $ErrorActionPreference = $previo }
+  if ($LASTEXITCODE -ne 0) {
+    $avisos | ForEach-Object { Write-Host $_ }
+    throw 'Fallo AWS; revisar el diagnostico antes de continuar.'
+  }
+  $avisos | ForEach-Object { Write-Host $_ }
   return $resultado
 }
 function PasoLocal([string]$Programa, [string[]]$Argumentos) {
-  & $Programa @Argumentos
+  # docker y npm escriben su PROGRESO en stderr, no solo sus fallos. Windows
+  # PowerShell 5.1 convierte esa salida en error de terminacion cuando
+  # ErrorActionPreference es Stop, y ni 2>&1 lo evita: hay que bajar la
+  # preferencia mientras corre el programa y volver a subirla despues.
+  # El codigo de salida es el unico juez de si el paso fallo.
+  $previo = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { & $Programa @Argumentos 2>&1 | ForEach-Object { Write-Host $_ } }
+  finally { $ErrorActionPreference = $previo }
   if ($LASTEXITCODE -ne 0) { throw "Fallo $Programa; despliegue detenido." }
 }
 Push-Location (Join-Path $PSScriptRoot '..')
@@ -28,7 +52,9 @@ try {
   # No crear una pila nueva con defaults que borren la configuracion de correo.
   $null = AwsVial cloudformation describe-stacks --stack-name vialservi-lambda --output json
   # Las pruebas escriben: nunca permitir que apunten a la base en AWS.
-  PasoLocal node @('--input-type=module', '-e', 'import dotenv from "dotenv"; dotenv.config({path:"apps/api/.env",quiet:true}); const u=new URL(process.env.DATABASE_URL); if (!["localhost","127.0.0.1","[::1]"].includes(u.hostname)) { console.error("Pruebas bloqueadas: DATABASE_URL no es local"); process.exit(1); }')
+  # En archivo, no inline: PowerShell le quita las comillas dobles al programa
+  # que se le pasa a node y el guardian moria de sintaxis sin comprobar nada.
+  PasoLocal node @('infra/verificar-base-local.mjs')
   PasoLocal npm @('test')
   PasoLocal npm @('run', 'build:api')
   # '/' se normaliza a origen actual; evita heredar un .env con localhost.
@@ -38,14 +64,39 @@ try {
   $repositorioVial = '102098709715.dkr.ecr.us-east-1.amazonaws.com/vialservi-api'
   $imagenVial = "${repositorioVial}:$etiquetaVial"
   PasoLocal docker @('build', '--platform', 'linux/amd64', '--provenance=false', '-f', 'Dockerfile.lambda', '-t', $imagenVial, '.')
-  AwsVial ecr get-login-password | & docker login --username AWS --password-stdin '102098709715.dkr.ecr.us-east-1.amazonaws.com'
+  # La tuberia de Windows PowerShell 5.1 corrompe el token al entregarlo a un
+  # proceso nativo y ECR responde 400. Se delega la tuberia a cmd, que la pasa
+  # byte a byte. La clave sigue viajando por stdin: nunca aparece en la linea
+  # de comandos, ni en el historial, ni en este registro.
+  $registroEcr = '102098709715.dkr.ecr.us-east-1.amazonaws.com'
+  $ordenEcr = "aws ecr get-login-password --profile $perfilVial --region $regionVial | " +
+              "docker login --username AWS --password-stdin $registroEcr 2>&1"
+  $previoEcr = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { cmd /c $ordenEcr | ForEach-Object { Write-Host $_ } }
+  finally { $ErrorActionPreference = $previoEcr }
   if ($LASTEXITCODE -ne 0) { throw 'Fallo la autenticacion ECR.' }
   PasoLocal docker @('push', $imagenVial)
   $digestVial = AwsVial ecr describe-images --repository-name vialservi-api --image-ids "imageTag=$etiquetaVial" --query 'imageDetails[0].imageDigest' --output text
   # URI inmutable; los demas parametros se reutilizan de la pila existente.
   AwsVial cloudformation deploy --stack-name vialservi-lambda --template-file infra/cloudformation/lambda.yml --capabilities CAPABILITY_IAM --parameter-overrides "ImagenApi=${repositorioVial}@$digestVial" --no-fail-on-empty-changeset
   $urlVial = ($pilaActual.Stacks[0].Outputs | Where-Object OutputKey -eq Url).OutputValue
-  $listoVial = Invoke-RestMethod "$urlVial/api/listo" -TimeoutSec 35
+  # Aurora queda pausada en 0 ACU: la primera peticion puede agotar el tiempo
+  # mientras el cluster despierta, y eso no significa que el despliegue fallara.
+  # /api/listo es la lectura de reactivacion, la unica que el diseño permite
+  # reintentar; una escritura jamas se reintenta. Cuatro intentos cubren de
+  # sobra los ~25 s que tarda en volver de la pausa.
+  $listoVial = $null
+  foreach ($intentoVial in 1..4) {
+    try {
+      $listoVial = Invoke-RestMethod "$urlVial/api/listo" -TimeoutSec 35
+      if ($listoVial.estado -eq 'listo') { break }
+    } catch {
+      Write-Host "Intento ${intentoVial}: la base todavia despierta ($($_.Exception.Message))"
+      $listoVial = $null
+    }
+    if ($intentoVial -lt 4) { Start-Sleep -Seconds 15 }
+  }
   if ($listoVial.estado -ne 'listo') { throw 'La API no esta lista. No publicar la interfaz.' }
   if (!$SoloApi) {
     $bucketVial = ($pilaActual.Stacks[0].Outputs | Where-Object OutputKey -eq BucketWebNombre).OutputValue

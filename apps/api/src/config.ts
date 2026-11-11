@@ -139,8 +139,7 @@ if (config.CORREO_REVELAR_CODIGO && config.CORREO_MODO !== 'consola') {
   config.CORREO_REVELAR_CODIGO = false;
 }
 
-// En produccion estas condiciones son fallas operativas o de seguridad, no
-// descuidos: mejor no arrancar que quedar en linea sin correo funcional.
+// Las claves inseguras impiden el arranque. El correo deshabilita solo la verificación.
 if (config.esProduccion) {
   if (config.CORREO_REVELAR_CODIGO) {
     throw new Error('CORREO_REVELAR_CODIGO no puede estar en true con NODE_ENV=production.');
@@ -152,13 +151,10 @@ if (config.esProduccion) {
     console.warn('[config] CORS_ORIGIN="*" en produccion: cualquier sitio puede llamar al API.');
   }
 
-  // En produccion el modo consola no sirve: el usuario nunca recibe el codigo
-  // de registro, alta de tecnico o cambio de clave. Fallar al arrancar evita
-  // publicar una aplicacion que aparenta funcionar pero no permite verificar
-  // cuentas.
+  // Conservar operaciones existentes; las rutas de verificación responden 503.
   if (config.CORREO_MODO === 'consola') {
-    throw new Error(
-      'CORREO_MODO=consola no está permitido en producción. Configure smtp o ses para enviar códigos por correo.',
+    console.warn(
+      'Correo en consola: las verificaciones no están disponibles hasta configurar SMTP o SES.',
     );
   }
 }
