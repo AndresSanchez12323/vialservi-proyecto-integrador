@@ -12,6 +12,12 @@ Comprobaciones aprobadas:
   rechazo de la cuenta personal y rechazo de la cuenta educativa.
 - `node --test Terraform/scripts/sql.test.mjs`: 2 pruebas aprobadas, incluidos
   los archivos reales de todas las migraciones del repositorio.
+- `node --test Terraform/scripts/restore.test.mjs`: 4 pruebas del modo
+  `restore` (lectura de la copia, rechazo de SQL que no sea de datos, todo o
+  nada). Además, el 12 nov. 2026 se cargó la copia real del 11 nov. con
+  `restoreBackup` en PostgreSQL 16 local sobre las 5 migraciones de `main`:
+  filas y secuencias iguales al origen, sesión sin `search_path` alterado, y
+  se negó a cargar sin migraciones o sobre una base con datos.
 - Sintaxis JavaScript de los scripts y parser de PowerShell sin errores.
 
 Límites:

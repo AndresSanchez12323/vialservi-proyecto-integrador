@@ -117,8 +117,10 @@ ni `terraform -target`. Bootstrap debe terminar antes de crear Lambda.
 
 ### 2. Trasladar datos y preparar secretos
 
-Si se conserva producción, seguir ahora MIGRATION.md y fijar el snapshot
-copiado en `snapshot_identifier` **antes del primer apply raíz**. Cambiar ese
+Desde el 11 de noviembre de 2026 no hay producción que conservar: dejar
+`snapshot_identifier = null` y cargar los datos en el paso 4 con `restore`.
+(Si algún día se trasladara desde una base viva, seguir MIGRATION.md y fijar
+el snapshot copiado en `snapshot_identifier` **antes del primer apply raíz**.) Cambiar ese
 campo después reemplazaría Aurora y será bloqueado por `prevent_destroy`.
 
 En la misma sesión PowerShell, cargar JWT/SMTP sin mostrarlos:
@@ -159,6 +161,10 @@ Tras comprobar la copia de base y evidencias según MIGRATION.md:
 ```powershell
 # Cuenta DESTINO: reemplazar cuenta y perfil. Nunca usar default.
 node Terraform/scripts/database.mjs migrate --profile vialservi-destino --account 000000000000 --region us-east-1 --approve-destination-schema
+# Datos de la copia local (base vacía; todo o nada; ver aviso de MIGRATION.md):
+$Copia = 'C:\ruta\a\Respaldo_web_VialServi_AndresX_20261111'   # carpeta de la copia local
+node Terraform/scripts/database.mjs restore --profile vialservi-destino --account 000000000000 --region us-east-1 --backup $Copia --approve-destination-restore
+# Subir evidencias de la copia: comando en el aviso de MIGRATION.md.
 ./Terraform/scripts/Deploy.ps1 -Phase Publish -Apply
 ```
 
@@ -200,7 +206,7 @@ terraform -chdir=Terraform validate
 terraform -chdir=Terraform test
 terraform -chdir=Terraform/bootstrap init -backend=false
 terraform -chdir=Terraform/bootstrap validate
-node --test Terraform/scripts/sql.test.mjs
+node --test Terraform/scripts/sql.test.mjs Terraform/scripts/restore.test.mjs
 ```
 
 `init -backend=false` descarga proveedores sin abrir la cuenta ni el backend.

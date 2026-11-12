@@ -9,14 +9,27 @@
 >
 > 1. Desplegar con `snapshot_identifier = null` (base vacía) y aplicar las
 >    migraciones con `database.mjs migrate` (paso 3).
-> 2. Ejecutar `base/vialservi-20261111-datos-inserts.sql` de la copia por
->    Data API, una sentencia por llamada en una transacción (`splitSql` de
->    `scripts/sql.mjs` las separa). Probado sobre el esquema de las 5
->    migraciones de `main`; deja también las secuencias.
-> 3. Subir `s3/vialservi-evidencias-102098709715/actual/evidencias/` de la
->    copia al bucket de evidencias nuevo, con las mismas claves.
-> 4. Verificar contra `base/huellas-origen.json` (filas por tabla) y seguir
->    con el paso 5. El `LEEME.md` de la copia tiene el detalle.
+> 2. Cargar los datos con un solo comando (todo o nada):
+>
+>    ```powershell
+>    $Copia = 'C:\ruta\a\Respaldo_web_VialServi_AndresX_20261111'   # carpeta de la copia local
+>    node Terraform/scripts/database.mjs restore --profile vialservi-destino --account $TargetAccountId --region us-east-1 --backup $Copia --approve-destination-restore
+>    ```
+>
+>    Exige que estén aplicadas todas las migraciones del repositorio y que la
+>    base destino esté vacía; solo admite sentencias de datos (INSERT y
+>    setval). Carga en una transacción y solo confirma si las filas por tabla
+>    y las secuencias son iguales a `base/huellas-origen.json`. Si algo no
+>    cuadra, revierte y no deja nada a medias. No imprime filas.
+> 3. Subir las evidencias al bucket nuevo con las mismas claves:
+>
+>    ```powershell
+>    $Bucket = terraform -chdir=Terraform output -raw evidence_bucket
+>    aws s3 cp "$Copia\s3\vialservi-evidencias-102098709715\actual\evidencias" "s3://$Bucket/evidencias" --recursive --profile vialservi-destino --region us-east-1
+>    ```
+>
+>    (`migracion-aurora/` de la copia son volcados viejos de octubre: no subirlos.)
+> 4. Seguir con el paso 5. El `LEEME.md` de la copia tiene el detalle.
 >
 > El resto del documento queda como referencia de cómo se planeó el traslado.
 
