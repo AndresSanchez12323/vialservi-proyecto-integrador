@@ -3,14 +3,16 @@
 import { execFileSync } from 'node:child_process';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolve, sep } from 'node:path';
 import { RDSDataClient, ExecuteStatementCommand, BeginTransactionCommand,
   CommitTransactionCommand, RollbackTransactionCommand } from '@aws-sdk/client-rds-data';
 import { splitSql } from './sql.mjs';
+import { restoreBackup } from './restore.mjs';
 
 const [mode, ...args] = process.argv.slice(2);
 const option = (key) => { const i = args.indexOf(`--${key}`); return i < 0 ? undefined : args[i + 1]; };
-if (!['migrate', 'inventory'].includes(mode)) throw new Error('Use migrate o inventory; lea Terraform/README.md');
+if (!['migrate', 'inventory', 'restore'].includes(mode)) throw new Error('Use migrate, restore o inventory; lea Terraform/README.md');
 const profile = option('profile'), account = option('account'), region = option('region');
 if (!profile || !/^\d{12}$/.test(account ?? '') || region !== 'us-east-1') throw new Error('Perfil, cuenta y region explicitos obligatorios');
 const source = args.includes('--source-read-only');
@@ -69,7 +71,7 @@ if (mode === 'inventory') {
   if (!option('manifest')) throw new Error('Indique --manifest ruta.json para guardar solo conteos y huellas');
   await writeFile(option('manifest'), JSON.stringify(manifest, null, 2), { flag: 'wx' });
   console.log('Inventario guardado: conteos, huellas y secuencias; no se exportaron filas');
-} else {
+} else if (mode === 'migrate') {
   if (!args.includes('--approve-destination-schema')) throw new Error('Se requiere --approve-destination-schema; inventariar la copia antes de modificar el esquema');
   await execute('SELECT 1'); // reactiva antes de comenzar transacciones
   await execute(`CREATE TABLE IF NOT EXISTS "_prisma_migrations" (
@@ -104,4 +106,25 @@ if (mode === 'inventory') {
       throw error;
     }
   }
+} else {
+  // restore: carga la copia local de datos en el destino, con las migraciones ya aplicadas.
+  if (!args.includes('--approve-destination-restore')) throw new Error('Se requiere --approve-destination-restore');
+  const backup = option('backup');
+  if (!backup) throw new Error('Indique --backup <carpeta de la copia> (la que tiene base/huellas-origen.json)');
+  const base = new URL('base/', pathToFileURL(resolve(backup) + sep));
+  const sqlFiles = (await readdir(base)).filter((f) => f.endsWith('-datos-inserts.sql'));
+  if (sqlFiles.length !== 1) throw new Error('La carpeta base/ debe tener exactamente un archivo *-datos-inserts.sql');
+  const texto = await readFile(new URL(sqlFiles[0], base), 'utf8');
+  const huellas = JSON.parse(await readFile(new URL('huellas-origen.json', base), 'utf8'));
+  const directory = new URL('../../apps/api/prisma/migrations/', import.meta.url);
+  const migraciones = (await readdir(directory, { withFileTypes: true })).filter(e => e.isDirectory()).map(e => e.name).sort();
+  await execute('SELECT 1'); // reactiva Aurora antes de abrir la transaccion
+  let transactionId;
+  await restoreBackup({
+    begin: async () => { ({ transactionId } = await client.send(new BeginTransactionCommand(connection))); },
+    query: async (sql) => rows(await execute(sql, transactionId)),
+    commit: () => client.send(new CommitTransactionCommand({ ...connection, transactionId })),
+    rollback: () => client.send(new RollbackTransactionCommand({ ...connection, transactionId })),
+  }, { texto, huellas, migraciones, log: (linea) => console.log(linea) });
+  console.log('Copia cargada y comprobada: filas y secuencias iguales a las del origen');
 }
