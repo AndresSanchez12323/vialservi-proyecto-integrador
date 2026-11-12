@@ -1,0 +1,10 @@
+output "url" { value = "https://${aws_cloudfront_distribution.app.domain_name}" }
+output "api_endpoint" { value = aws_apigatewayv2_api.app.api_endpoint }
+output "distribution_id" { value = aws_cloudfront_distribution.app.id }
+output "web_bucket" { value = aws_s3_bucket.web.id }
+output "evidence_bucket" { value = aws_s3_bucket.evidence.id }
+output "cluster_arn" { value = aws_rds_cluster.app.arn }
+output "database_secret_arn" { value = aws_rds_cluster.app.master_user_secret[0].secret_arn }
+output "kms_key_arn" { value = aws_kms_key.data.arn }
+output "lambda_name" { value = aws_lambda_function.api.function_name }
+output "source_commit" { value = var.source_commit }

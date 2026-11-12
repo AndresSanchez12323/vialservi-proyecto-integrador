@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SourceAccountAdministration",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::102098709715:root" },
+      "Action": "kms:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "DestinationMayReadTransferSnapshots",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::000000000000:root" },
+      "Action": ["kms:Decrypt", "kms:DescribeKey", "kms:ReEncryptFrom"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DestinationRDSGrant",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::000000000000:root" },
+      "Action": ["kms:CreateGrant"],
+      "Resource": "*",
+      "Condition": { "Bool": { "kms:GrantIsForAWSResource": "true" } }
+    }
+  ]
+}
